@@ -65,7 +65,7 @@ class SqliteKnowledgeBackend:
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(str(self.db_path))
 
-    def save_pattern(self, pattern: Pattern) -> None:
+    async def save_pattern(self, pattern: Pattern) -> None:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO patterns
@@ -84,7 +84,7 @@ class SqliteKnowledgeBackend:
                 ),
             )
 
-    def save_antipattern(self, antipattern: Antipattern) -> None:
+    async def save_antipattern(self, antipattern: Antipattern) -> None:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO antipatterns
@@ -102,7 +102,7 @@ class SqliteKnowledgeBackend:
                 ),
             )
 
-    def query_patterns(self, query: KnowledgeQuery) -> list[Pattern]:
+    async def query_patterns(self, query: KnowledgeQuery) -> list[Pattern]:
         conditions = []
         params: list = []
 
@@ -129,7 +129,7 @@ class SqliteKnowledgeBackend:
 
         return [self._row_to_pattern(row) for row in rows]
 
-    def query_antipatterns(self, query: KnowledgeQuery) -> list[Antipattern]:
+    async def query_antipatterns(self, query: KnowledgeQuery) -> list[Antipattern]:
         conditions = []
         params: list = []
 
@@ -153,13 +153,13 @@ class SqliteKnowledgeBackend:
 
         return [self._row_to_antipattern(row) for row in rows]
 
-    def count(self) -> dict[str, int]:
+    async def count(self) -> dict[str, int]:
         with self._connect() as conn:
             patterns = conn.execute("SELECT COUNT(*) FROM patterns").fetchone()[0]
             antipatterns = conn.execute("SELECT COUNT(*) FROM antipatterns").fetchone()[0]
         return {"patterns": patterns, "antipatterns": antipatterns}
 
-    def trim(self, max_patterns: int = 500, max_antipatterns: int = 500) -> None:
+    async def trim(self, max_patterns: int = 500, max_antipatterns: int = 500) -> None:
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) FROM patterns").fetchone()[0]
             if count > max_patterns:

@@ -31,7 +31,7 @@ class KnowledgeStore:
         self.max_antipatterns = max_antipatterns
         self.bot_id = bot_id
 
-    def record_success(
+    async def record_success(
         self,
         capability: str,
         description: str,
@@ -42,7 +42,7 @@ class KnowledgeStore:
         run_id: str | None = None,
     ) -> None:
         """Record a strategy that worked."""
-        self.backend.save_pattern(Pattern(
+        await self.backend.save_pattern(Pattern(
             capability=capability,
             description=description,
             config=config,
@@ -53,7 +53,7 @@ class KnowledgeStore:
             source_bot=self.bot_id,
         ))
 
-    def record_failure(
+    async def record_failure(
         self,
         capability: str,
         error_summary: str,
@@ -63,7 +63,7 @@ class KnowledgeStore:
         run_id: str | None = None,
     ) -> None:
         """Record a strategy that failed."""
-        self.backend.save_antipattern(Antipattern(
+        await self.backend.save_antipattern(Antipattern(
             capability=capability,
             error_summary=error_summary[:500],
             config=config,
@@ -73,7 +73,7 @@ class KnowledgeStore:
             source_bot=self.bot_id,
         ))
 
-    def to_prompt_context(
+    async def to_prompt_context(
         self,
         capability: str,
         max_entries: int = 10,
@@ -83,10 +83,10 @@ class KnowledgeStore:
         Returns a string block that can be appended to any system prompt.
         Agents receive only knowledge relevant to their capability.
         """
-        patterns = self.backend.query_patterns(
+        patterns = await self.backend.query_patterns(
             KnowledgeQuery(capability=capability, max_entries=max_entries)
         )
-        antipatterns = self.backend.query_antipatterns(
+        antipatterns = await self.backend.query_antipatterns(
             KnowledgeQuery(capability=capability, max_entries=max_entries)
         )
 
@@ -114,7 +114,7 @@ class KnowledgeStore:
 
         return "\n".join(lines)
 
-    def to_foreign_prompt_context(
+    async def to_foreign_prompt_context(
         self,
         capability: str,
         max_entries: int = 10,
@@ -132,8 +132,8 @@ class KnowledgeStore:
             max_entries=max_entries,
             exclude_source=self.bot_id,
         )
-        patterns = self.backend.query_patterns(query)
-        antipatterns = self.backend.query_antipatterns(query)
+        patterns = await self.backend.query_patterns(query)
+        antipatterns = await self.backend.query_antipatterns(query)
 
         if not patterns and not antipatterns:
             return ""
@@ -159,15 +159,15 @@ class KnowledgeStore:
 
         return "\n".join(lines)
 
-    def summary(self) -> dict:
+    async def summary(self) -> dict:
         """Snapshot for observation tools."""
-        counts = self.backend.count()
+        counts = await self.backend.count()
         return {
             "patterns": counts.get("patterns", 0),
             "antipatterns": counts.get("antipatterns", 0),
         }
 
-    def trim(self) -> None:
+    async def trim(self) -> None:
         """Evict oldest entries when limits are exceeded.
         Called automatically at the end of each pipeline run."""
-        self.backend.trim(self.max_patterns, self.max_antipatterns)
+        await self.backend.trim(self.max_patterns, self.max_antipatterns)

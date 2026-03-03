@@ -42,17 +42,17 @@ class JsonKnowledgeBackend:
     def _save_antipatterns(self, data: list[dict]) -> None:
         self._antipatterns_path.write_text(json.dumps(data, indent=2, default=str))
 
-    def save_pattern(self, pattern: Pattern) -> None:
+    async def save_pattern(self, pattern: Pattern) -> None:
         data = self._load_patterns()
         data.append(pattern.to_dict())
         self._save_patterns(data)
 
-    def save_antipattern(self, antipattern: Antipattern) -> None:
+    async def save_antipattern(self, antipattern: Antipattern) -> None:
         data = self._load_antipatterns()
         data.append(antipattern.to_dict())
         self._save_antipatterns(data)
 
-    def query_patterns(self, query: KnowledgeQuery) -> list[Pattern]:
+    async def query_patterns(self, query: KnowledgeQuery) -> list[Pattern]:
         data = self._load_patterns()
         patterns = [Pattern.from_dict(d) for d in data]
 
@@ -72,7 +72,7 @@ class JsonKnowledgeBackend:
         patterns.sort(key=lambda p: p.timestamp, reverse=True)
         return patterns[:query.max_entries]
 
-    def query_antipatterns(self, query: KnowledgeQuery) -> list[Antipattern]:
+    async def query_antipatterns(self, query: KnowledgeQuery) -> list[Antipattern]:
         data = self._load_antipatterns()
         antipatterns = [Antipattern.from_dict(d) for d in data]
 
@@ -86,13 +86,13 @@ class JsonKnowledgeBackend:
         antipatterns.sort(key=lambda a: a.timestamp, reverse=True)
         return antipatterns[:query.max_entries]
 
-    def count(self) -> dict[str, int]:
+    async def count(self) -> dict[str, int]:
         return {
             "patterns": len(self._load_patterns()),
             "antipatterns": len(self._load_antipatterns()),
         }
 
-    def trim(self, max_patterns: int = 500, max_antipatterns: int = 500) -> None:
+    async def trim(self, max_patterns: int = 500, max_antipatterns: int = 500) -> None:
         """Evict oldest entries when limits are exceeded."""
         patterns = self._load_patterns()
         if len(patterns) > max_patterns:

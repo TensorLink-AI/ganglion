@@ -185,14 +185,14 @@ class FrameworkState:
 
     # ── Observation methods ─────────────────────────────────
 
-    def describe(self) -> dict:
+    async def describe(self) -> dict:
         """Full snapshot of current state for observation tools."""
         return {
             "subnet": self.subnet_config.to_dict(),
             "pipeline": self.pipeline_def.to_dict(),
             "tools": self.tool_registry.list_all(),
             "agents": self.agent_registry.list_all(),
-            "knowledge": self.knowledge.summary() if self.knowledge else None,
+            "knowledge": (await self.knowledge.summary()) if self.knowledge else None,
             "mutations": len(self.mutations),
             "running": self._running,
         }
@@ -433,7 +433,7 @@ class FrameworkState:
                 if self.persistence:
                     await self.persistence.save_run(result)
                 if self.knowledge:
-                    self.knowledge.trim()
+                    await self.knowledge.trim()
                 return result
             finally:
                 self._running = False

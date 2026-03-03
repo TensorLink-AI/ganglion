@@ -216,8 +216,8 @@ class PipelineOrchestrator:
 
             # Inject knowledge context into agent prompts
             if self.knowledge:
-                knowledge_ctx = self.knowledge.to_prompt_context(stage_def.name)
-                foreign_ctx = self.knowledge.to_foreign_prompt_context(stage_def.name)
+                knowledge_ctx = await self.knowledge.to_prompt_context(stage_def.name)
+                foreign_ctx = await self.knowledge.to_foreign_prompt_context(stage_def.name)
                 combined = knowledge_ctx
                 if foreign_ctx:
                     combined = f"{combined}\n\n{foreign_ctx}" if combined else foreign_ctx
@@ -235,7 +235,7 @@ class PipelineOrchestrator:
 
                 if result.success:
                     # Record success to knowledge store
-                    self._record_knowledge(stage_def, result, task, success=True)
+                    await self._record_knowledge(stage_def, result, task, success=True)
                     return StageResult(
                         success=True, result=result, attempts=attempt + 1
                     )
@@ -257,7 +257,7 @@ class PipelineOrchestrator:
                 ))
 
         # All retries exhausted
-        self._record_knowledge(stage_def, last_result, task, success=False)
+        await self._record_knowledge(stage_def, last_result, task, success=False)
         return StageResult(
             success=False,
             result=last_result,
@@ -269,7 +269,7 @@ class PipelineOrchestrator:
         """Resolve an agent class from the registry."""
         return self.agents.get(agent_ref)
 
-    def _record_knowledge(
+    async def _record_knowledge(
         self,
         stage_def: StageDef,
         result: AgentResult | None,
@@ -282,7 +282,7 @@ class PipelineOrchestrator:
 
         try:
             if success:
-                self.knowledge.record_success(
+                await self.knowledge.record_success(
                     capability=stage_def.name,
                     description=(result.raw_text or "")[:200],
                     config=result.structured.get("config") if isinstance(result.structured, dict) else None,
@@ -291,7 +291,7 @@ class PipelineOrchestrator:
                     stage=stage_def.name,
                 )
             else:
-                self.knowledge.record_failure(
+                await self.knowledge.record_failure(
                     capability=stage_def.name,
                     error_summary=result.raw_text or "Unknown error",
                     config=result.structured.get("config") if isinstance(result.structured, dict) else None,
