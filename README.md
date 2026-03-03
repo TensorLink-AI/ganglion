@@ -246,6 +246,52 @@ POST /rollback/last        — undo the most recent mutation
 POST /rollback/{index}     — undo all mutations back to index
 ```
 
+## How Ganglion Thinks About Mining
+
+A subnet's validator defines a scoring function. Mining is finding outputs that score well. Ganglion is search infrastructure — it doesn't know what a good model looks like, it knows how to search for one.
+
+Fitting the framework to a subnet's incentive mechanism means answering four questions:
+
+1. **What does the validator measure?** This defines your metrics and output spec.
+2. **What can you change?** Architecture, hyperparameters, data preprocessing, ensembling — these become your tools.
+3. **What should you try?** Strategic exploration guided by accumulated knowledge — this is what agents decide.
+4. **How do you know it's working?** Metrics recorded per run, compared against history — this is the knowledge store.
+
+### The funnel: cost efficiency through progressive filtering
+
+Not all experiments are worth finishing. Ganglion pipelines are designed as funnels — cheap stages generate volume, expensive stages select winners:
+
+1. **Plan** — an agent proposes experiment configurations (fast, zero compute)
+2. **Screen** — quick heuristic checks reject obviously bad configs (seconds)
+3. **Prototype** — short training runs on small data to estimate potential (minutes)
+4. **Train** — full training on promising candidates only (hours)
+5. **Validate** — final evaluation against the validator's actual scoring (minutes)
+
+Most value comes from screening, not training. A pipeline that screens 100 ideas and trains 3 beats one that trains 10 ideas blindly.
+
+### Knowledge compounds across runs
+
+The knowledge store records patterns (what worked) and antipatterns (what failed) after every run. Run 30 is better than run 1 because the agent has 29 runs of accumulated evidence about what to try and what to avoid. This gives an incumbent miner a structural advantage over newcomers starting from zero — the knowledge is the moat.
+
+### Multi-bot: emergent cooperation from diversity
+
+The mechanism comes from Weis et al. 2026 ("Multi-agent cooperation through in-context co-player inference"). The key insight: agents trained against a diverse mix of co-players naturally develop cooperation — without explicit coordination machinery.
+
+Multiple OpenClaw sessions share a knowledge pool. Each session has a unique `bot_id`. When one session discovers a pattern, others see it automatically through the shared backend. Cooperation emerges from the pool, not from sessions talking to each other.
+
+This works best when sessions are equipped with different skills:
+
+- **Architecture explorer** — broad search across model families
+- **Hyperparameter specialist** — deep optimization of promising configs
+- **Data strategist** — preprocessing, augmentation, feature engineering
+- **Baseline sentinel** — maintains and defends the current best submission
+
+Each session's discoveries flow into the shared knowledge pool. The architecture explorer finds that transformers outperform CNNs on this subnet — the hyperparameter specialist sees that pattern and focuses its search on transformer configurations. No explicit routing. No coordinator. The shared knowledge pool is the only coupling.
+
+### Self-organizing information sharing
+
+Not all knowledge is equally shareable. Antipatterns are always worth sharing — revealing a dead end costs nothing and saves everyone compute. Superseded patterns (approaches that once worked but have been beaten) are cheap to share. Current best approaches stay private — that's competition. The knowledge store's `source_bot` tagging and `exclude_source` filtering make this natural: each session controls what it queries and how it uses foreign knowledge.
+
 ## Design Principles
 
 1. **Extract from two, not one.** Abstractions are validated against at least two dissimilar subnets before promotion to framework code.
