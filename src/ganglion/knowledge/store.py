@@ -24,10 +24,12 @@ class KnowledgeStore:
         backend: KnowledgeBackend,
         max_patterns: int = 500,
         max_antipatterns: int = 500,
+        bot_id: str | None = None,
     ):
         self.backend = backend
         self.max_patterns = max_patterns
         self.max_antipatterns = max_antipatterns
+        self.bot_id = bot_id
 
     def record_success(
         self,
@@ -48,6 +50,7 @@ class KnowledgeStore:
             metric_name=metric_name,
             stage=stage,
             run_id=run_id,
+            source_bot=self.bot_id,
         ))
 
     def record_failure(
@@ -67,6 +70,7 @@ class KnowledgeStore:
             failure_mode=failure_mode,
             stage=stage,
             run_id=run_id,
+            source_bot=self.bot_id,
         ))
 
     def to_prompt_context(
@@ -103,6 +107,51 @@ class KnowledgeStore:
 
         if antipatterns:
             lines.append("\n### Known Failures (avoid these)")
+            for a in antipatterns:
+                lines.append(f"- {a.error_summary}")
+                if a.failure_mode:
+                    lines.append(f"  Failure mode: {a.failure_mode}")
+
+        return "\n".join(lines)
+
+    def to_foreign_prompt_context(
+        self,
+        capability: str,
+        max_entries: int = 10,
+    ) -> str:
+        """Format knowledge from OTHER bots for injection into an agent's prompt.
+
+        Returns "" if bot_id is not set (single-bot mode, no foreign knowledge).
+        Otherwise queries patterns/antipatterns excluding this bot's own entries.
+        """
+        if self.bot_id is None:
+            return ""
+
+        query = KnowledgeQuery(
+            capability=capability,
+            max_entries=max_entries,
+            exclude_source=self.bot_id,
+        )
+        patterns = self.backend.query_patterns(query)
+        antipatterns = self.backend.query_antipatterns(query)
+
+        if not patterns and not antipatterns:
+            return ""
+
+        lines = ["\n## Discoveries from other bots"]
+
+        if patterns:
+            lines.append("\n### Approaches that worked for others")
+            for p in patterns:
+                metric_str = (
+                    f" (achieved {p.metric_name}={p.metric_value})"
+                    if p.metric_value is not None
+                    else ""
+                )
+                lines.append(f"- {p.description}{metric_str}")
+
+        if antipatterns:
+            lines.append("\n### Dead ends found by others (avoid these)")
             for a in antipatterns:
                 lines.append(f"- {a.error_summary}")
                 if a.failure_mode:

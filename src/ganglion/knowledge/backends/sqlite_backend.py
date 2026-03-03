@@ -32,7 +32,8 @@ class SqliteKnowledgeBackend:
                     metric_name TEXT,
                     stage TEXT,
                     timestamp TEXT NOT NULL,
-                    run_id TEXT
+                    run_id TEXT,
+                    source_bot TEXT
                 )
             """)
             conn.execute("""
@@ -44,7 +45,8 @@ class SqliteKnowledgeBackend:
                     failure_mode TEXT,
                     stage TEXT,
                     timestamp TEXT NOT NULL,
-                    run_id TEXT
+                    run_id TEXT,
+                    source_bot TEXT
                 )
             """)
             conn.execute(
@@ -52,6 +54,12 @@ class SqliteKnowledgeBackend:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_antipatterns_capability ON antipatterns(capability)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_patterns_source_bot ON patterns(source_bot)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_antipatterns_source_bot ON antipatterns(source_bot)"
             )
 
     def _connect(self) -> sqlite3.Connection:
@@ -61,8 +69,8 @@ class SqliteKnowledgeBackend:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO patterns
-                   (capability, description, config, metric_value, metric_name, stage, timestamp, run_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (capability, description, config, metric_value, metric_name, stage, timestamp, run_id, source_bot)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     pattern.capability,
                     pattern.description,
@@ -72,6 +80,7 @@ class SqliteKnowledgeBackend:
                     pattern.stage,
                     pattern.timestamp.isoformat(),
                     pattern.run_id,
+                    pattern.source_bot,
                 ),
             )
 
@@ -79,8 +88,8 @@ class SqliteKnowledgeBackend:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO antipatterns
-                   (capability, error_summary, config, failure_mode, stage, timestamp, run_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (capability, error_summary, config, failure_mode, stage, timestamp, run_id, source_bot)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     antipattern.capability,
                     antipattern.error_summary,
@@ -89,6 +98,7 @@ class SqliteKnowledgeBackend:
                     antipattern.stage,
                     antipattern.timestamp.isoformat(),
                     antipattern.run_id,
+                    antipattern.source_bot,
                 ),
             )
 
@@ -105,6 +115,9 @@ class SqliteKnowledgeBackend:
         if query.min_metric is not None:
             conditions.append("metric_value >= ?")
             params.append(query.min_metric)
+        if query.exclude_source is not None:
+            conditions.append("(source_bot IS NULL OR source_bot != ?)")
+            params.append(query.exclude_source)
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         sql = f"SELECT * FROM patterns {where} ORDER BY timestamp DESC LIMIT ?"
@@ -126,6 +139,9 @@ class SqliteKnowledgeBackend:
         if query.since:
             conditions.append("timestamp >= ?")
             params.append(query.since.isoformat())
+        if query.exclude_source is not None:
+            conditions.append("(source_bot IS NULL OR source_bot != ?)")
+            params.append(query.exclude_source)
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         sql = f"SELECT * FROM antipatterns {where} ORDER BY timestamp DESC LIMIT ?"
@@ -173,6 +189,7 @@ class SqliteKnowledgeBackend:
             stage=row["stage"],
             timestamp=datetime.fromisoformat(row["timestamp"]),
             run_id=row["run_id"],
+            source_bot=row["source_bot"],
         )
 
     def _row_to_antipattern(self, row: sqlite3.Row) -> Antipattern:
@@ -186,4 +203,5 @@ class SqliteKnowledgeBackend:
             stage=row["stage"],
             timestamp=datetime.fromisoformat(row["timestamp"]),
             run_id=row["run_id"],
+            source_bot=row["source_bot"],
         )

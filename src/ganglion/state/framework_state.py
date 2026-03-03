@@ -86,7 +86,7 @@ class FrameworkState:
         )
 
     @classmethod
-    def load(cls, config_path: str | Path) -> FrameworkState:
+    def load(cls, config_path: str | Path, bot_id: str | None = None) -> FrameworkState:
         """Load state from a project directory.
 
         Reads config.py, discovers tools in tools/, agents in agents/,
@@ -98,6 +98,12 @@ class FrameworkState:
         And optionally:
           - persistence: PersistenceBackend
           - knowledge: KnowledgeStore
+
+        Args:
+            config_path: Path to project directory or config file.
+            bot_id: Optional bot identifier for multi-bot shared knowledge.
+                    When set, knowledge entries are tagged with this id and
+                    foreign knowledge from other bots can be queried.
         """
         project_root = Path(config_path)
         if project_root.is_file():
@@ -124,6 +130,10 @@ class FrameworkState:
 
         persistence = getattr(config_module, "persistence", None)
         knowledge = getattr(config_module, "knowledge", None)
+
+        # Set bot_id on knowledge store for multi-bot shared knowledge
+        if knowledge is not None and bot_id is not None:
+            knowledge.bot_id = bot_id
 
         # Build registries by discovering files
         tool_registry = ToolRegistry()

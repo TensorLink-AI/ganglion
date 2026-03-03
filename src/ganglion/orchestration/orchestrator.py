@@ -214,6 +214,20 @@ class PipelineOrchestrator:
                     break
                 agent_kwargs = {}
 
+            # Inject knowledge context into agent prompts
+            if self.knowledge:
+                knowledge_ctx = self.knowledge.to_prompt_context(stage_def.name)
+                foreign_ctx = self.knowledge.to_foreign_prompt_context(stage_def.name)
+                combined = knowledge_ctx
+                if foreign_ctx:
+                    combined = f"{combined}\n\n{foreign_ctx}" if combined else foreign_ctx
+                if combined:
+                    existing = agent_kwargs.get("extra_system_context", "")
+                    if existing:
+                        agent_kwargs["extra_system_context"] = f"{existing}\n\n{combined}"
+                    else:
+                        agent_kwargs["extra_system_context"] = combined
+
             try:
                 agent = agent_cls(**agent_kwargs)
                 result = await agent.run(task)
