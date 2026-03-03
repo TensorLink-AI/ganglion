@@ -151,12 +151,16 @@ If you cannot make progress, call finish(success=false, summary="...").
 name: ganglion-{self.slug}
 description: Domain knowledge and bootstrap strategies for mining {self.name} (netuid {self.netuid}) with Ganglion.
 homepage: https://github.com/TensorLink-AI/ganglion
-metadata: {{"openclaw":{{"emoji":"\\u26d3","requires":{{"env":["GANGLION_URL"]}}}}}}
+metadata: {{"openclaw":{{"emoji":"\\u26d3","requires":{{"anyBins":["ganglion","curl"]}}}}}}
 ---
 
 # {self.name} (netuid {self.netuid})
 
 {self.domain_context}
+
+This skill provides domain knowledge. Use the `ganglion` skill for API commands.
+When `GANGLION_PROJECT` is set (or `GANGLION_URL` is not set), use local CLI commands.
+When `GANGLION_URL` is set, use curl against the HTTP bridge.
 
 ## Metrics
 
@@ -170,12 +174,20 @@ The validator scores miners on:
 {strategies_section}{pitfalls_section}
 ## Bootstrap workflow
 
-1. Start the Ganglion bridge: `ganglion serve ./{self.slug} --bot-id {{{{bot_id}}}} --port 8899`
-2. Check current knowledge: `curl -s "$GANGLION_URL/knowledge" | jq`
-3. Review starter tools: `curl -s "$GANGLION_URL/tools" | jq`
-4. Run the pipeline: `curl -s -X POST "$GANGLION_URL/run/pipeline" | jq`
-5. Check metrics: `curl -s "$GANGLION_URL/metrics" | jq`
-6. Iterate: write new tools, adjust agents, patch the pipeline based on results
+Local mode (same machine as OpenClaw):
+
+1. `export GANGLION_PROJECT=./{self.slug}`
+2. `ganglion status $GANGLION_PROJECT` — check state
+3. `ganglion knowledge $GANGLION_PROJECT` — review prior knowledge
+4. `ganglion tools $GANGLION_PROJECT` — review starter tools
+5. `ganglion run $GANGLION_PROJECT` — run the pipeline
+6. Iterate: edit tools/agents in the project directory and re-run
+
+Remote mode (separate server):
+
+1. `ganglion serve ./{self.slug} --bot-id {{{{bot_id}}}} --port 8899`
+2. `export GANGLION_URL=http://127.0.0.1:8899`
+3. Use curl commands from the `ganglion` skill
 
 ## Constraints
 
