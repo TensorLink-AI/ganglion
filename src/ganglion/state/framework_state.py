@@ -86,7 +86,7 @@ class FrameworkState:
         )
 
     @classmethod
-    def load(cls, config_path: str | Path) -> FrameworkState:
+    def load(cls, config_path: str | Path, bot_id: str | None = None) -> FrameworkState:
         """Load state from a project directory.
 
         Reads config.py, discovers tools in tools/, agents in agents/,
@@ -98,6 +98,12 @@ class FrameworkState:
         And optionally:
           - persistence: PersistenceBackend
           - knowledge: KnowledgeStore
+
+        Args:
+            config_path: Path to project directory or config file.
+            bot_id: Optional bot identifier for multi-bot shared knowledge.
+                    When set, knowledge entries are tagged with this id and
+                    foreign knowledge from other bots can be queried.
         """
         project_root = Path(config_path)
         if project_root.is_file():
@@ -124,6 +130,10 @@ class FrameworkState:
 
         persistence = getattr(config_module, "persistence", None)
         knowledge = getattr(config_module, "knowledge", None)
+
+        # Set bot_id on knowledge store for multi-bot shared knowledge
+        if knowledge is not None and bot_id is not None:
+            knowledge.bot_id = bot_id
 
         # Build registries by discovering files
         tool_registry = ToolRegistry()
@@ -175,14 +185,14 @@ class FrameworkState:
 
     # ── Observation methods ─────────────────────────────────
 
-    def describe(self) -> dict:
+    async def describe(self) -> dict:
         """Full snapshot of current state for observation tools."""
         return {
             "subnet": self.subnet_config.to_dict(),
             "pipeline": self.pipeline_def.to_dict(),
             "tools": self.tool_registry.list_all(),
             "agents": self.agent_registry.list_all(),
-            "knowledge": self.knowledge.summary() if self.knowledge else None,
+            "knowledge": (await self.knowledge.summary()) if self.knowledge else None,
             "mutations": len(self.mutations),
             "running": self._running,
         }
@@ -423,7 +433,7 @@ class FrameworkState:
                 if self.persistence:
                     await self.persistence.save_run(result)
                 if self.knowledge:
-                    self.knowledge.trim()
+                    await self.knowledge.trim()
                 return result
             finally:
                 self._running = False

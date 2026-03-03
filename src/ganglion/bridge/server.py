@@ -82,7 +82,7 @@ class RunExperimentRequest(BaseModel):
 @app.get("/status")
 async def get_status():
     """Full framework state snapshot."""
-    return _get_state().describe()
+    return await _get_state().describe()
 
 
 @app.get("/pipeline")
@@ -145,13 +145,13 @@ async def get_knowledge(capability: str | None = None, max_entries: int = 20):
     return {
         "patterns": [
             p.__dict__
-            for p in state.knowledge.backend.query_patterns(query)
+            for p in await state.knowledge.backend.query_patterns(query)
         ],
         "antipatterns": [
             a.__dict__
-            for a in state.knowledge.backend.query_antipatterns(query)
+            for a in await state.knowledge.backend.query_antipatterns(query)
         ],
-        "summary": state.knowledge.summary(),
+        "summary": await state.knowledge.summary(),
     }
 
 

@@ -53,8 +53,9 @@ def state(tmp_dir):
 
 
 class TestFrameworkState:
-    def test_describe(self, state):
-        desc = state.describe()
+    @pytest.mark.asyncio
+    async def test_describe(self, state):
+        desc = await state.describe()
         assert desc["subnet"]["name"] == "Test"
         assert desc["running"] is False
         assert desc["mutations"] == 0

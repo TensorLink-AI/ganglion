@@ -19,6 +19,7 @@ class Pattern:
     stage: str | None = None
     timestamp: datetime = field(default_factory=datetime.utcnow)
     run_id: str | None = None
+    source_bot: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +31,7 @@ class Pattern:
             "stage": self.stage,
             "timestamp": self.timestamp.isoformat(),
             "run_id": self.run_id,
+            "source_bot": self.source_bot,
         }
 
     @classmethod
@@ -48,6 +50,7 @@ class Pattern:
             stage=data.get("stage"),
             timestamp=ts,
             run_id=data.get("run_id"),
+            source_bot=data.get("source_bot"),
         )
 
 
@@ -62,6 +65,7 @@ class Antipattern:
     stage: str | None = None
     timestamp: datetime = field(default_factory=datetime.utcnow)
     run_id: str | None = None
+    source_bot: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -72,6 +76,7 @@ class Antipattern:
             "stage": self.stage,
             "timestamp": self.timestamp.isoformat(),
             "run_id": self.run_id,
+            "source_bot": self.source_bot,
         }
 
     @classmethod
@@ -89,6 +94,7 @@ class Antipattern:
             stage=data.get("stage"),
             timestamp=ts,
             run_id=data.get("run_id"),
+            source_bot=data.get("source_bot"),
         )
 
 
@@ -100,3 +106,4 @@ class KnowledgeQuery:
     max_entries: int = 10
     since: datetime | None = None
     min_metric: float | None = None
+    exclude_source: str | None = None
