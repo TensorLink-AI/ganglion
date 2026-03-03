@@ -156,3 +156,72 @@ def my_tool(x: int) -> str:
         )
         assert state.subnet_config.name == "Test"
         assert len(state.pipeline_def.stages) == 0
+
+    def test_load_from_project_dir(self, tmp_dir):
+        """Test FrameworkState.load() discovers config, tools, and agents."""
+        # Write a config.py
+        config_code = '''
+from ganglion.orchestration.task_context import SubnetConfig, MetricDef, TaskDef, OutputSpec
+from ganglion.orchestration.pipeline import PipelineDef, StageDef
+
+subnet_config = SubnetConfig(
+    netuid=50,
+    name="LoadTest",
+    metrics=[MetricDef("crps", "minimize")],
+    tasks={"btc": TaskDef("btc")},
+    output_spec=OutputSpec(format="pytorch_tensor"),
+)
+
+pipeline = PipelineDef(
+    name="load-test",
+    stages=[
+        StageDef(name="train", agent="LoadTrainer"),
+    ],
+)
+'''
+        (tmp_dir / "config.py").write_text(config_code)
+
+        # Write a tool
+        tools_dir = tmp_dir / "tools"
+        tools_dir.mkdir()
+        (tools_dir / "my_tool.py").write_text('''
+from ganglion.composition.tool_registry import tool
+
+@tool("load_test_tool")
+def load_test_tool(x: int) -> str:
+    """A tool discovered by load()."""
+    return str(x)
+''')
+
+        # Write an agent
+        agents_dir = tmp_dir / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "trainer.py").write_text('''
+from ganglion.composition.base_agent import BaseAgentWrapper
+
+class LoadTrainer(BaseAgentWrapper):
+    def build_system_prompt(self, task):
+        return "test"
+
+    def build_tools(self, task):
+        return [], {}
+''')
+
+        state = FrameworkState.load(tmp_dir)
+        assert state.subnet_config.name == "LoadTest"
+        assert state.subnet_config.netuid == 50
+        assert state.pipeline_def.name == "load-test"
+        assert state.tool_registry.has("load_test_tool")
+        assert state.agent_registry.has("LoadTrainer")
+
+    def test_load_missing_config(self, tmp_dir):
+        """load() raises FileNotFoundError when config.py is missing."""
+        with pytest.raises(FileNotFoundError):
+            FrameworkState.load(tmp_dir)
+
+    @pytest.mark.asyncio
+    async def test_update_prompt(self, state):
+        result = await state.update_prompt("trainer", "role", "You are a trainer.")
+        assert result.success is True
+        assert len(state.mutations) == 1
+        assert state.mutations[0].mutation_type == "write_prompt"

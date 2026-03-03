@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
 from pathlib import Path
 from typing import Any, Callable
@@ -79,6 +80,94 @@ class FrameworkState:
             pipeline_def=pipeline_def,
             tool_registry=ToolRegistry(),
             agent_registry=AgentRegistry(),
+            persistence=persistence,
+            project_root=project_root,
+            knowledge=knowledge,
+        )
+
+    @classmethod
+    def load(cls, config_path: str | Path) -> FrameworkState:
+        """Load state from a project directory.
+
+        Reads config.py, discovers tools in tools/, agents in agents/,
+        loads pipeline definition, and initializes persistence.
+
+        The config.py module must define:
+          - subnet_config: SubnetConfig
+          - pipeline: PipelineDef
+        And optionally:
+          - persistence: PersistenceBackend
+          - knowledge: KnowledgeStore
+        """
+        project_root = Path(config_path)
+        if project_root.is_file():
+            project_root = project_root.parent
+
+        config_file = project_root / "config.py"
+        if not config_file.exists():
+            raise FileNotFoundError(f"No config.py found in {project_root}")
+
+        # Import config module
+        spec = importlib.util.spec_from_file_location("_project_config", str(config_file))
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load config from {config_file}")
+        config_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(config_module)
+
+        subnet_config = getattr(config_module, "subnet_config", None)
+        if subnet_config is None:
+            raise ValueError("config.py must define 'subnet_config'")
+
+        pipeline_def = getattr(config_module, "pipeline", None)
+        if pipeline_def is None:
+            raise ValueError("config.py must define 'pipeline'")
+
+        persistence = getattr(config_module, "persistence", None)
+        knowledge = getattr(config_module, "knowledge", None)
+
+        # Build registries by discovering files
+        tool_registry = ToolRegistry()
+        tools_dir = project_root / "tools"
+        if tools_dir.is_dir():
+            for py_file in sorted(tools_dir.glob("*.py")):
+                if py_file.name.startswith("_"):
+                    continue
+                try:
+                    tool_registry.register_from_file(py_file)
+                except Exception as e:
+                    logger.warning("Failed to load tool from %s: %s", py_file, e)
+
+        agent_registry = AgentRegistry()
+        agents_dir = project_root / "agents"
+        if agents_dir.is_dir():
+            for py_file in sorted(agents_dir.glob("*.py")):
+                if py_file.name.startswith("_"):
+                    continue
+                try:
+                    # Import and find BaseAgentWrapper subclasses
+                    mod_spec = importlib.util.spec_from_file_location(
+                        py_file.stem, str(py_file)
+                    )
+                    if mod_spec and mod_spec.loader:
+                        mod = importlib.util.module_from_spec(mod_spec)
+                        mod_spec.loader.exec_module(mod)
+                        from ganglion.composition.base_agent import BaseAgentWrapper
+                        import inspect as _inspect
+
+                        for name, obj in _inspect.getmembers(mod, _inspect.isclass):
+                            if (
+                                issubclass(obj, BaseAgentWrapper)
+                                and obj is not BaseAgentWrapper
+                            ):
+                                agent_registry.register(name, obj)
+                except Exception as e:
+                    logger.warning("Failed to load agent from %s: %s", py_file, e)
+
+        return cls(
+            subnet_config=subnet_config,
+            pipeline_def=pipeline_def,
+            tool_registry=tool_registry,
+            agent_registry=agent_registry,
             persistence=persistence,
             project_root=project_root,
             knowledge=knowledge,
@@ -257,6 +346,60 @@ class FrameworkState:
 
             return MutationResult(success=True)
 
+    async def update_prompt(
+        self,
+        agent_name: str,
+        prompt_section: str,
+        content: str,
+    ) -> MutationResult:
+        """Write or replace a prompt section for an existing agent."""
+        async with self._mutation_lock:
+            self._check_not_running("Cannot update prompts during a run")
+
+            path = self.project_root / "prompts" / f"{agent_name.lower()}.py"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            previous = path.read_text() if path.exists() else None
+
+            # Store as a simple key=value Python module
+            if previous:
+                # Append or replace section in existing file
+                section_marker = f"# section: {prompt_section}"
+                lines = previous.splitlines()
+                new_lines = []
+                skip = False
+                replaced = False
+                for line in lines:
+                    if line.strip() == section_marker:
+                        skip = True
+                        replaced = True
+                        new_lines.append(section_marker)
+                        new_lines.append(f'{prompt_section} = """{content}"""')
+                        continue
+                    if skip and line.startswith("# section:"):
+                        skip = False
+                    if not skip:
+                        new_lines.append(line)
+                if not replaced:
+                    new_lines.append("")
+                    new_lines.append(section_marker)
+                    new_lines.append(f'{prompt_section} = """{content}"""')
+                path.write_text("\n".join(new_lines))
+            else:
+                section_marker = f"# section: {prompt_section}"
+                path.write_text(f"{section_marker}\n{prompt_section} = \"\"\"{content}\"\"\"")
+
+            self.mutations.append(
+                Mutation(
+                    mutation_type="write_prompt",
+                    target=f"{agent_name}/{prompt_section}",
+                    description=f"Updated prompt section '{prompt_section}' for agent '{agent_name}'",
+                    diff=content,
+                    rollback_data={"path": str(path), "previous": previous},
+                )
+            )
+
+            return MutationResult(success=True, path=str(path))
+
     # ── Execution methods ───────────────────────────────────
 
     async def run_pipeline(
@@ -313,6 +456,29 @@ class FrameworkState:
                 return await orchestrator._execute_stage(stage_def, task)
             finally:
                 self._running = False
+
+    async def run_direct_experiment(self, config: dict) -> dict:
+        """Run a single experiment directly, bypassing the pipeline.
+
+        This is a thin passthrough — the actual experiment logic lives in
+        subnet-specific @tool functions. This method looks for a registered
+        tool named 'run_experiment' and calls it with the provided config.
+        """
+        tool_def = self.tool_registry.get("run_experiment")
+        if tool_def is None:
+            return {"success": False, "error": "No 'run_experiment' tool registered"}
+        try:
+            result = tool_def.func(**config)
+            if hasattr(result, "content"):
+                return {
+                    "success": True,
+                    "content": result.content,
+                    "structured": result.structured if hasattr(result, "structured") else None,
+                    "metrics": result.metrics if hasattr(result, "metrics") else None,
+                }
+            return {"success": True, "content": str(result)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     # ── Rollback ────────────────────────────────────────────
 

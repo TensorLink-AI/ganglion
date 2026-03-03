@@ -44,6 +44,18 @@ class WriteAgentRequest(BaseModel):
     test_task: dict | None = None
 
 
+class WriteComponentRequest(BaseModel):
+    name: str
+    code: str
+    component_type: str = "general"
+
+
+class WritePromptRequest(BaseModel):
+    agent_name: str
+    prompt_section: str
+    content: str
+
+
 class PatchPipelineRequest(BaseModel):
     operations: list[dict]
 
@@ -109,6 +121,20 @@ async def get_metrics(experiment_id: str | None = None):
     return await state.persistence.query_metrics(experiment_id=experiment_id)
 
 
+@app.get("/leaderboard")
+async def get_leaderboard():
+    """Current Bittensor subnet leaderboard.
+
+    Delegates to the subnet client if configured. Returns an empty
+    list when no subnet client is available (e.g., local development).
+    """
+    state = _get_state()
+    subnet_client = getattr(state, "subnet_client", None)
+    if subnet_client and hasattr(subnet_client, "get_leaderboard"):
+        return await subnet_client.get_leaderboard()
+    return []
+
+
 @app.get("/knowledge")
 async def get_knowledge(capability: str | None = None, max_entries: int = 20):
     """Knowledge store contents."""
@@ -139,6 +165,20 @@ async def get_source(path: str):
     return {"path": path, "content": full_path.read_text()}
 
 
+@app.get("/components")
+async def get_components():
+    """Available model components in the training framework.
+
+    Delegates to a training_framework attribute if configured.
+    Returns an empty list when unavailable.
+    """
+    state = _get_state()
+    training_framework = getattr(state, "training_framework", None)
+    if training_framework and hasattr(training_framework, "list_components"):
+        return training_framework.list_components()
+    return []
+
+
 # ── Mutation endpoints ──────────────────────────────────────
 
 
@@ -161,6 +201,34 @@ async def write_agent(body: WriteAgentRequest):
     result = await state.write_and_register_agent(
         body.name, body.code, body.test_task
     )
+    if not result.success:
+        raise HTTPException(400, {"errors": result.errors})
+    return {"success": True, "path": result.path}
+
+
+@app.post("/components")
+async def write_component(body: WriteComponentRequest):
+    """Write a new model component (backbone, head, loss, etc.).
+
+    Delegates to a training_framework attribute if configured.
+    """
+    state = _get_state()
+    training_framework = getattr(state, "training_framework", None)
+    if training_framework and hasattr(training_framework, "write_component"):
+        result = training_framework.write_component(body.name, body.code, body.component_type)
+        return {"success": True, "result": result}
+    # Fallback: write to components/ directory and register as a tool
+    path = state.project_root / "components" / f"{body.name}.py"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body.code)
+    return {"success": True, "path": str(path)}
+
+
+@app.post("/prompts")
+async def write_prompt(body: WritePromptRequest):
+    """Write or replace a prompt section for an existing agent."""
+    state = _get_state()
+    result = await state.update_prompt(body.agent_name, body.prompt_section, body.content)
     if not result.success:
         raise HTTPException(400, {"errors": result.errors})
     return {"success": True, "path": result.path}
@@ -210,6 +278,13 @@ async def run_stage(stage_name: str, body: RunStageRequest | None = None):
         stage_name, body.context if body else None
     )
     return result.to_dict()
+
+
+@app.post("/run/experiment")
+async def run_experiment(body: RunExperimentRequest):
+    """Run a single experiment directly (bypass pipeline)."""
+    state = _get_state()
+    return await state.run_direct_experiment(body.config)
 
 
 # ── Rollback endpoints ──────────────────────────────────────
