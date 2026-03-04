@@ -80,7 +80,7 @@ def coerce_string_numbers(
 class CoercionPipeline:
     """Runs a sequence of coercion functions over tool-call arguments."""
 
-    def __init__(self, coercions: list | None = None):
+    def __init__(self, coercions: list[Any] | None = None):
         self.coercions = coercions or [
             coerce_json_strings,
             coerce_empty_to_list,

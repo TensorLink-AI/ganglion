@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -12,7 +13,7 @@ class Pattern:
 
     capability: str
     description: str
-    config: dict | None = None
+    config: dict[str, Any] | None = None
     metric_value: float | None = None
     metric_name: str | None = None
     stage: str | None = None
@@ -20,7 +21,7 @@ class Pattern:
     run_id: str | None = None
     source_bot: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "capability": self.capability,
             "description": self.description,
@@ -34,7 +35,7 @@ class Pattern:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> Pattern:
+    def from_dict(cls, data: dict[str, Any]) -> Pattern:
         parsed_timestamp = data.get("timestamp")
         if isinstance(parsed_timestamp, str):
             parsed_timestamp = datetime.fromisoformat(parsed_timestamp)
@@ -59,14 +60,14 @@ class Antipattern:
 
     capability: str
     error_summary: str
-    config: dict | None = None
+    config: dict[str, Any] | None = None
     failure_mode: str | None = None
     stage: str | None = None
     timestamp: datetime = field(default_factory=datetime.utcnow)
     run_id: str | None = None
     source_bot: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "capability": self.capability,
             "error_summary": self.error_summary,
@@ -79,7 +80,7 @@ class Antipattern:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> Antipattern:
+    def from_dict(cls, data: dict[str, Any]) -> Antipattern:
         parsed_timestamp = data.get("timestamp")
         if isinstance(parsed_timestamp, str):
             parsed_timestamp = datetime.fromisoformat(parsed_timestamp)

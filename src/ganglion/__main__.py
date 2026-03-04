@@ -24,6 +24,8 @@ import json
 import logging
 import signal
 import sys
+import types
+from typing import Any
 
 logger = logging.getLogger("ganglion")
 
@@ -40,7 +42,7 @@ def _setup_logging(level: str = "INFO") -> None:
 def _setup_signal_handlers() -> None:
     """Install graceful shutdown handlers for SIGTERM and SIGINT."""
 
-    def _handle_shutdown(signum, frame):
+    def _handle_shutdown(signum: int, frame: types.FrameType | None) -> None:
         sig_name = signal.Signals(signum).name
         logger.info("Received %s, shutting down gracefully", sig_name)
         sys.exit(0)
@@ -107,30 +109,30 @@ def main(argv: list[str] | None = None) -> None:
 
     # ── Local-mode commands (no server needed) ─────────────
 
-    _project_arg = {"help": "Path to the subnet project directory"}
+    _project_help = "Path to the subnet project directory"
 
     status_parser = subparsers.add_parser("status", help="Show framework state")
-    status_parser.add_argument("project_dir", **_project_arg)
+    status_parser.add_argument("project_dir", help=_project_help)
     status_parser.add_argument("--bot-id", default=None)
 
     tools_parser = subparsers.add_parser("tools", help="List registered tools")
-    tools_parser.add_argument("project_dir", **_project_arg)
+    tools_parser.add_argument("project_dir", help=_project_help)
     tools_parser.add_argument("--category", default=None)
 
     agents_parser = subparsers.add_parser("agents", help="List registered agents")
-    agents_parser.add_argument("project_dir", **_project_arg)
+    agents_parser.add_argument("project_dir", help=_project_help)
 
     knowledge_parser = subparsers.add_parser("knowledge", help="Show knowledge store")
-    knowledge_parser.add_argument("project_dir", **_project_arg)
+    knowledge_parser.add_argument("project_dir", help=_project_help)
     knowledge_parser.add_argument("--bot-id", default=None)
     knowledge_parser.add_argument("--capability", default=None)
     knowledge_parser.add_argument("--max-entries", type=int, default=20)
 
     pipeline_parser = subparsers.add_parser("pipeline", help="Show pipeline definition")
-    pipeline_parser.add_argument("project_dir", **_project_arg)
+    pipeline_parser.add_argument("project_dir", help=_project_help)
 
     run_parser = subparsers.add_parser("run", help="Run pipeline or a single stage")
-    run_parser.add_argument("project_dir", **_project_arg)
+    run_parser.add_argument("project_dir", help=_project_help)
     run_parser.add_argument("--bot-id", default=None)
     run_parser.add_argument("--stage", default=None, help="Run only this stage")
     run_parser.add_argument(
@@ -169,17 +171,17 @@ def main(argv: list[str] | None = None) -> None:
 # ── Helpers ────────────────────────────────────────────────
 
 
-def _load_state(project_dir: str, bot_id: str | None = None):
+def _load_state(project_dir: str, bot_id: str | None = None) -> Any:
     from ganglion.state.framework_state import FrameworkState
 
     return FrameworkState.load(project_dir, bot_id=bot_id)
 
 
-def _print_json(data):
+def _print_json(data: Any) -> None:
     print(json.dumps(data, indent=2, default=str))
 
 
-def _async_run(coro):
+def _async_run(coro: Any) -> Any:
     return asyncio.run(coro)
 
 
@@ -278,7 +280,7 @@ def _run_knowledge(args: argparse.Namespace) -> None:
 
     query = KnowledgeQuery(capability=args.capability, max_entries=args.max_entries)
 
-    async def _gather():
+    async def _gather() -> dict[str, Any]:
         return {
             "patterns": [p.__dict__ for p in await state.knowledge.backend.query_patterns(query)],
             "antipatterns": [

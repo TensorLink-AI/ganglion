@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -15,9 +16,9 @@ class Mutation:
     description: str
     timestamp: datetime = field(default_factory=datetime.utcnow)
     diff: str | None = None
-    rollback_data: dict = field(default_factory=dict)
+    rollback_data: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "mutation_type": self.mutation_type,
             "target": self.target,
@@ -34,4 +35,4 @@ class MutationResult:
     success: bool
     errors: list[str] = field(default_factory=list)
     path: str | None = None
-    pipeline: dict | None = None
+    pipeline: dict[str, Any] | None = None

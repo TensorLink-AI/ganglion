@@ -181,7 +181,7 @@ class FrameworkState:
 
     # ── Observation methods ─────────────────────────────────
 
-    async def describe(self) -> dict:
+    async def describe(self) -> dict[str, Any]:
         """Full snapshot of current state for observation tools."""
         return {
             "subnet": self.subnet_config.to_dict(),
@@ -245,7 +245,7 @@ class FrameworkState:
         self,
         name: str,
         code: str,
-        test_task: dict | None = None,
+        test_task: dict[str, Any] | None = None,
     ) -> MutationResult:
         """Write a new agent, validate, and register it."""
         async with self._mutation_lock:
@@ -276,7 +276,7 @@ class FrameworkState:
 
     async def apply_pipeline_patch(
         self,
-        operations: list[dict],
+        operations: list[dict[str, Any]],
     ) -> MutationResult:
         """Apply atomic pipeline modifications. Validates before committing."""
         async with self._mutation_lock:
@@ -408,7 +408,7 @@ class FrameworkState:
 
     # ── Execution methods ───────────────────────────────────
 
-    async def run_pipeline(self, overrides: dict | None = None) -> PipelineResult:
+    async def run_pipeline(self, overrides: dict[str, Any] | None = None) -> PipelineResult:
         """Execute the current pipeline. Blocks mutations during execution."""
         async with self._run_lock:
             self._is_running = True
@@ -435,7 +435,7 @@ class FrameworkState:
     async def run_single_stage(
         self,
         stage_name: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> StageResult:
         """Run a single stage in isolation."""
         async with self._run_lock:
@@ -459,7 +459,7 @@ class FrameworkState:
             finally:
                 self._is_running = False
 
-    async def run_direct_experiment(self, config: dict) -> dict:
+    async def run_direct_experiment(self, config: dict[str, Any]) -> dict[str, Any]:
         """Run a single experiment directly, bypassing the pipeline.
 
         This is a thin passthrough — the actual experiment logic lives in

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -10,7 +11,7 @@ class ToolOutput:
     """Base return type. Content is passed to the LLM as a string."""
 
     content: str
-    structured: dict | None = None
+    structured: dict[str, Any] | None = None
 
 
 @dataclass

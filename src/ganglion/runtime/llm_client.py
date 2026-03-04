@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 try:
     from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 except ImportError:
-    AsyncOpenAI = None  # type: ignore[assignment, misc]
-    APIError = Exception  # type: ignore[assignment, misc]
-    RateLimitError = Exception  # type: ignore[assignment, misc]
-    APIConnectionError = Exception  # type: ignore[assignment, misc]
+    AsyncOpenAI = None  # type: ignore[assignment,misc]
+    APIError = Exception  # type: ignore[assignment,misc]
+    RateLimitError = Exception  # type: ignore[assignment,misc]
+    APIConnectionError = Exception  # type: ignore[assignment,misc]
 
 
 class LLMClient:
@@ -47,11 +47,11 @@ class LLMClient:
     async def chat_completion(
         self,
         messages: list[dict[str, Any]],
-        tools: list[dict] | None = None,
+        tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
         model: str | None = None,
         **kwargs: Any,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Send a chat completion request with exponential backoff on transient errors."""
         request_kwargs: dict[str, Any] = {
             "model": model or self.model,
@@ -87,8 +87,8 @@ class LLMClient:
                     )
                     await asyncio.sleep(delay)
             except APIError as e:
-                if e.status_code and e.status_code >= 500:
-                    last_error = e
+                if getattr(e, "status_code", None) and e.status_code >= 500:  # type: ignore[attr-defined]
+                    last_error = e  # type: ignore[assignment]
                     if attempt < self.max_retries:
                         delay = min(self.base_delay * (2**attempt), self.max_delay)
                         logger.warning(
@@ -104,7 +104,7 @@ class LLMClient:
 
         raise last_error  # type: ignore[misc]
 
-    def _parse_response(self, response: Any) -> dict:
+    def _parse_response(self, response: Any) -> dict[str, Any]:
         """Parse the OpenAI response into a standardized dict."""
         choice = response.choices[0]
         message = choice.message

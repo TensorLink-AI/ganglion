@@ -24,9 +24,9 @@ class SimpleAgent:
         self,
         llm_client: LLMClient,
         system_prompt: str,
-        tools_schema: list[dict],
-        tool_handlers: dict[str, Callable],
-        context_messages: list[dict] | None = None,
+        tools_schema: list[dict[str, Any]],
+        tool_handlers: dict[str, Callable[..., Any]],
+        context_messages: list[dict[str, Any]] | None = None,
         max_turns: int = 50,
         temperature: float = 0.7,
         model: str | None = None,
@@ -103,7 +103,7 @@ class SimpleAgent:
             turns_used=self.max_turns,
         )
 
-    def _build_assistant_message(self, response: dict) -> dict[str, Any]:
+    def _build_assistant_message(self, response: dict[str, Any]) -> dict[str, Any]:
         """Build the assistant message to append to the conversation."""
         message: dict[str, Any] = {
             "role": "assistant",
@@ -113,7 +113,7 @@ class SimpleAgent:
             message["tool_calls"] = response["tool_calls"]
         return message
 
-    def _parse_tool_calls(self, response: dict) -> list[ToolCall]:
+    def _parse_tool_calls(self, response: dict[str, Any]) -> list[ToolCall]:
         """Extract tool calls from the LLM response."""
         raw_calls = response.get("tool_calls", [])
         calls = []

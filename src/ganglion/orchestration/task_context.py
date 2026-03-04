@@ -85,7 +85,7 @@ class SubnetConfig:
 
         return "\n".join(lines)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "netuid": self.netuid,
             "name": self.name,
@@ -124,7 +124,7 @@ class SlotMeta:
 class TaskContext:
     """Inter-agent shared state with namespaced, typed slots."""
 
-    def __init__(self, subnet_config: SubnetConfig, initial: dict | None = None):
+    def __init__(self, subnet_config: SubnetConfig, initial: dict[str, Any] | None = None):
         self.subnet_config = subnet_config
         self._data: dict[str, Any] = initial or {}
         self._metadata: dict[str, SlotMeta] = {}
@@ -160,7 +160,7 @@ class TaskContext:
         """Return all available keys."""
         return list(self._data.keys())
 
-    def snapshot(self) -> dict:
+    def snapshot(self) -> dict[str, Any]:
         """Returns a read-only copy of all data (for logging/persistence)."""
         return {
             k: {

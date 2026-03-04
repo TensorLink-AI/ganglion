@@ -28,8 +28,13 @@ logger = logging.getLogger(__name__)
 class PersistenceBackend(Protocol):
     """Pluggable persistence interface."""
 
-    async def save_checkpoint(self, stage: str, context_snapshot: dict, result: Any) -> None: ...
-    async def load_checkpoint(self, stage: str) -> tuple[dict, Any] | None: ...
+    async def save_checkpoint(
+        self,
+        stage: str,
+        context_snapshot: dict[str, Any],
+        result: Any,
+    ) -> None: ...
+    async def load_checkpoint(self, stage: str) -> tuple[dict[str, Any], Any] | None: ...
     async def save_run(self, pipeline_result: Any) -> None: ...
     async def load_run_history(
         self,
@@ -43,7 +48,7 @@ class PersistenceBackend(Protocol):
         experiment_id: str | None = None,
         metric_name: str | None = None,
         top_n: int | None = None,
-    ) -> list[dict]: ...
+    ) -> list[dict[str, Any]]: ...
     async def save_mutation_log(self, mutations: list[Any]) -> None: ...
     async def load_mutation_log(self) -> list[Any]: ...
 
@@ -57,7 +62,7 @@ class StageResult:
     attempts: int = 0
     error: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,
             "attempts": self.attempts,
@@ -75,7 +80,7 @@ class PipelineResult:
     reason: str | None = None
     results: dict[str, StageResult] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,
             "failed_stage": self.failed_stage,

@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -51,7 +52,10 @@ def _check_rate_limit(client_ip: str, max_requests: int) -> bool:
 
 
 @app.middleware("http")
-async def request_middleware(request: Request, call_next) -> Response:
+async def request_middleware(
+    request: Request,
+    call_next: Callable[[Request], Coroutine[Any, Any, Response]],
+) -> Response:
     """Add request ID, security headers, rate limiting, timing, and size limits."""
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
     start_time = time.monotonic()
@@ -139,7 +143,7 @@ def _get_state() -> FrameworkState:
 # ── Response helpers ───────────────────────────────────────
 
 
-def _success_response(data: Any) -> dict:
+def _success_response(data: Any) -> dict[str, Any]:
     """Wrap successful response in standard envelope."""
     return {"data": data}
 
@@ -165,7 +169,7 @@ class WriteToolRequest(BaseModel):
 class WriteAgentRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     code: str = Field(..., min_length=1, max_length=100_000)
-    test_task: dict | None = None
+    test_task: dict[str, Any] | None = None
 
 
 class WriteComponentRequest(BaseModel):
@@ -181,36 +185,36 @@ class WritePromptRequest(BaseModel):
 
 
 class PatchPipelineRequest(BaseModel):
-    operations: list[dict] = Field(..., min_length=1, max_length=50)
+    operations: list[dict[str, Any]] = Field(..., min_length=1, max_length=50)
 
 
 class SwapPolicyRequest(BaseModel):
-    retry_policy: dict
+    retry_policy: dict[str, Any]
 
 
 class RunPipelineRequest(BaseModel):
-    overrides: dict | None = None
+    overrides: dict[str, Any] | None = None
 
 
 class RunStageRequest(BaseModel):
-    context: dict | None = None
+    context: dict[str, Any] | None = None
 
 
 class RunExperimentRequest(BaseModel):
-    config: dict
+    config: dict[str, Any]
 
 
 # ── Health endpoints ───────────────────────────────────────
 
 
 @app.get("/healthz")
-async def health_check() -> dict:
+async def health_check() -> dict[str, str]:
     """Liveness probe — returns 200 if the process is alive."""
     return {"status": "ok"}
 
 
 @app.get("/readyz")
-async def readiness_check() -> dict:
+async def readiness_check() -> dict[str, str]:
     """Readiness probe — returns 200 if the bridge is configured and ready."""
     if _state is None:
         raise HTTPException(
@@ -224,32 +228,32 @@ async def readiness_check() -> dict:
 
 
 @app.get("/v1/status")
-async def get_status():
+async def get_status() -> dict[str, Any]:
     """Full framework state snapshot."""
     state = _get_state()
     return _success_response(await state.describe())
 
 
 @app.get("/v1/pipeline")
-async def get_pipeline():
+async def get_pipeline() -> dict[str, Any]:
     """Current pipeline definition."""
     return _success_response(_get_state().pipeline_def.to_dict())
 
 
 @app.get("/v1/tools")
-async def get_tools(category: str | None = None):
+async def get_tools(category: str | None = None) -> dict[str, Any]:
     """Registered tools."""
     return _success_response(_get_state().tool_registry.list_all(category=category))
 
 
 @app.get("/v1/agents")
-async def get_agents():
+async def get_agents() -> dict[str, Any]:
     """Registered agents."""
     return _success_response(_get_state().agent_registry.list_all())
 
 
 @app.get("/v1/runs")
-async def get_run_history(n: int = 10):
+async def get_run_history(n: int = 10) -> dict[str, Any]:
     """Past pipeline runs."""
     if n < 1 or n > 1000:
         _error_response("INVALID_PARAM", "n must be between 1 and 1000")
@@ -260,7 +264,7 @@ async def get_run_history(n: int = 10):
 
 
 @app.get("/v1/metrics")
-async def get_metrics(experiment_id: str | None = None):
+async def get_metrics(experiment_id: str | None = None) -> dict[str, Any]:
     """Experiment metrics."""
     state = _get_state()
     if state.persistence is None:
@@ -269,7 +273,7 @@ async def get_metrics(experiment_id: str | None = None):
 
 
 @app.get("/v1/leaderboard")
-async def get_leaderboard():
+async def get_leaderboard() -> dict[str, Any]:
     """Current Bittensor subnet leaderboard."""
     state = _get_state()
     subnet_client = getattr(state, "subnet_client", None)
@@ -279,7 +283,7 @@ async def get_leaderboard():
 
 
 @app.get("/v1/knowledge")
-async def get_knowledge(capability: str | None = None, max_entries: int = 20):
+async def get_knowledge(capability: str | None = None, max_entries: int = 20) -> dict[str, Any]:
     """Knowledge store contents."""
     if max_entries < 1 or max_entries > 1000:
         _error_response("INVALID_PARAM", "max_entries must be between 1 and 1000")
@@ -299,7 +303,7 @@ async def get_knowledge(capability: str | None = None, max_entries: int = 20):
 
 
 @app.get("/v1/source/{path:path}")
-async def get_source(path: str):
+async def get_source(path: str) -> dict[str, Any]:
     """Read source code of any file in the project."""
     state = _get_state()
     # Sanitize path to prevent directory traversal
@@ -330,7 +334,7 @@ async def get_source(path: str):
 
 
 @app.get("/v1/components")
-async def get_components():
+async def get_components() -> dict[str, Any]:
     """Available model components in the training framework."""
     state = _get_state()
     training_framework = getattr(state, "training_framework", None)
@@ -343,7 +347,7 @@ async def get_components():
 
 
 @app.post("/v1/tools", status_code=201)
-async def write_tool(body: WriteToolRequest):
+async def write_tool(body: WriteToolRequest) -> dict[str, Any]:
     """Write and register a new tool."""
     state = _get_state()
     result = await state.write_and_register_tool(
@@ -355,7 +359,7 @@ async def write_tool(body: WriteToolRequest):
 
 
 @app.post("/v1/agents", status_code=201)
-async def write_agent(body: WriteAgentRequest):
+async def write_agent(body: WriteAgentRequest) -> dict[str, Any]:
     """Write and register a new agent."""
     state = _get_state()
     result = await state.write_and_register_agent(body.name, body.code, body.test_task)
@@ -365,7 +369,7 @@ async def write_agent(body: WriteAgentRequest):
 
 
 @app.post("/v1/components", status_code=201)
-async def write_component(body: WriteComponentRequest):
+async def write_component(body: WriteComponentRequest) -> dict[str, Any]:
     """Write a new model component (backbone, head, loss, etc.)."""
     state = _get_state()
     training_framework = getattr(state, "training_framework", None)
@@ -382,7 +386,7 @@ async def write_component(body: WriteComponentRequest):
 
 
 @app.post("/v1/prompts")
-async def write_prompt(body: WritePromptRequest):
+async def write_prompt(body: WritePromptRequest) -> dict[str, Any]:
     """Write or replace a prompt section for an existing agent."""
     state = _get_state()
     result = await state.update_prompt(body.agent_name, body.prompt_section, body.content)
@@ -392,7 +396,7 @@ async def write_prompt(body: WritePromptRequest):
 
 
 @app.patch("/v1/pipeline")
-async def patch_pipeline(body: PatchPipelineRequest):
+async def patch_pipeline(body: PatchPipelineRequest) -> dict[str, Any]:
     """Apply pipeline modifications."""
     state = _get_state()
     result = await state.apply_pipeline_patch(body.operations)
@@ -402,7 +406,7 @@ async def patch_pipeline(body: PatchPipelineRequest):
 
 
 @app.put("/v1/policies/{stage_name}")
-async def swap_policy(stage_name: str, body: SwapPolicyRequest):
+async def swap_policy(stage_name: str, body: SwapPolicyRequest) -> dict[str, Any]:
     """Swap retry policy for a stage."""
     state = _get_state()
     result = await state.swap_policy(
@@ -418,7 +422,7 @@ async def swap_policy(stage_name: str, body: SwapPolicyRequest):
 
 
 @app.post("/v1/run/pipeline")
-async def run_pipeline(body: RunPipelineRequest | None = None):
+async def run_pipeline(body: RunPipelineRequest | None = None) -> dict[str, Any]:
     """Execute full pipeline."""
     state = _get_state()
     try:
@@ -430,7 +434,7 @@ async def run_pipeline(body: RunPipelineRequest | None = None):
 
 
 @app.post("/v1/run/stage/{stage_name}")
-async def run_stage(stage_name: str, body: RunStageRequest | None = None):
+async def run_stage(stage_name: str, body: RunStageRequest | None = None) -> dict[str, Any]:
     """Execute a single pipeline stage."""
     state = _get_state()
     try:
@@ -442,7 +446,7 @@ async def run_stage(stage_name: str, body: RunStageRequest | None = None):
 
 
 @app.post("/v1/run/experiment")
-async def run_experiment(body: RunExperimentRequest):
+async def run_experiment(body: RunExperimentRequest) -> dict[str, Any]:
     """Run a single experiment directly (bypass pipeline)."""
     state = _get_state()
     try:
@@ -457,7 +461,7 @@ async def run_experiment(body: RunExperimentRequest):
 
 
 @app.post("/v1/rollback/last")
-async def rollback_last():
+async def rollback_last() -> dict[str, Any]:
     """Undo the most recent mutation."""
     state = _get_state()
     result = await state.rollback_last()
@@ -467,7 +471,7 @@ async def rollback_last():
 
 
 @app.post("/v1/rollback/{index}")
-async def rollback_to(index: int):
+async def rollback_to(index: int) -> dict[str, Any]:
     """Undo all mutations back to the given index."""
     if index < 0:
         _error_response("INVALID_PARAM", "Index must be >= 0")
@@ -483,60 +487,63 @@ async def rollback_to(index: int):
 
 
 @app.get("/status")
-async def get_status_compat():
+async def get_status_compat() -> dict[str, Any]:
     """Full framework state snapshot (deprecated: use /v1/status)."""
     return await get_status()
 
 
 @app.get("/pipeline")
-async def get_pipeline_compat():
+async def get_pipeline_compat() -> dict[str, Any]:
     """Current pipeline definition (deprecated: use /v1/pipeline)."""
     return await get_pipeline()
 
 
 @app.get("/tools")
-async def get_tools_compat(category: str | None = None):
+async def get_tools_compat(category: str | None = None) -> dict[str, Any]:
     """Registered tools (deprecated: use /v1/tools)."""
     return await get_tools(category)
 
 
 @app.get("/agents")
-async def get_agents_compat():
+async def get_agents_compat() -> dict[str, Any]:
     """Registered agents (deprecated: use /v1/agents)."""
     return await get_agents()
 
 
 @app.get("/knowledge")
-async def get_knowledge_compat(capability: str | None = None, max_entries: int = 20):
+async def get_knowledge_compat(
+    capability: str | None = None,
+    max_entries: int = 20,
+) -> dict[str, Any]:
     """Knowledge store (deprecated: use /v1/knowledge)."""
     return await get_knowledge(capability, max_entries)
 
 
 @app.post("/tools")
-async def write_tool_compat(body: WriteToolRequest):
+async def write_tool_compat(body: WriteToolRequest) -> dict[str, Any]:
     """Write tool (deprecated: use /v1/tools)."""
     return await write_tool(body)
 
 
 @app.post("/agents")
-async def write_agent_compat(body: WriteAgentRequest):
+async def write_agent_compat(body: WriteAgentRequest) -> dict[str, Any]:
     """Write agent (deprecated: use /v1/agents)."""
     return await write_agent(body)
 
 
 @app.patch("/pipeline")
-async def patch_pipeline_compat(body: PatchPipelineRequest):
+async def patch_pipeline_compat(body: PatchPipelineRequest) -> dict[str, Any]:
     """Patch pipeline (deprecated: use /v1/pipeline)."""
     return await patch_pipeline(body)
 
 
 @app.post("/run/pipeline")
-async def run_pipeline_compat(body: RunPipelineRequest | None = None):
+async def run_pipeline_compat(body: RunPipelineRequest | None = None) -> dict[str, Any]:
     """Run pipeline (deprecated: use /v1/run/pipeline)."""
     return await run_pipeline(body)
 
 
 @app.post("/rollback/last")
-async def rollback_last_compat():
+async def rollback_last_compat() -> dict[str, Any]:
     """Rollback (deprecated: use /v1/rollback/last)."""
     return await rollback_last()

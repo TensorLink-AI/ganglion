@@ -23,9 +23,9 @@ class ToolRegistry:
     def register(
         self,
         name: str,
-        func: Callable,
+        func: Callable[..., Any],
         description: str,
-        parameters_schema: dict,
+        parameters_schema: dict[str, Any],
         category: str = "general",
     ) -> None:
         """Register a tool at runtime."""
@@ -74,19 +74,22 @@ class ToolRegistry:
         """Get a tool definition by name."""
         return self._tools.get(name)
 
-    def list_all(self, category: str | None = None) -> list[dict]:
+    def list_all(self, category: str | None = None) -> list[dict[str, Any]]:
         """List all registered tools."""
         tools = list(self._tools.values())
         if category:
             tools = [t for t in tools if t.category == category]
         return [t.to_dict() for t in tools]
 
-    def build_toolset(self, *names: str) -> tuple[list[dict], dict[str, Callable]]:
+    def build_toolset(
+        self,
+        *names: str,
+    ) -> tuple[list[dict[str, Any]], dict[str, Callable[..., Any]]]:
         """Build a scoped subset of tools for an agent."""
         from ganglion.composition.tool_registry import get_finish_tool_schema
 
-        schemas: list[dict] = []
-        handlers: dict[str, Callable] = {}
+        schemas: list[dict[str, Any]] = []
+        handlers: dict[str, Callable[..., Any]] = {}
 
         for name in names:
             if name == "finish":

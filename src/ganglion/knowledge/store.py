@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from ganglion.knowledge.backends.base import KnowledgeBackend
 from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
 
@@ -35,7 +37,7 @@ class KnowledgeStore:
         self,
         capability: str,
         description: str,
-        config: dict | None = None,
+        config: dict[str, Any] | None = None,
         metric_value: float | None = None,
         metric_name: str | None = None,
         stage: str | None = None,
@@ -59,7 +61,7 @@ class KnowledgeStore:
         self,
         capability: str,
         error_summary: str,
-        config: dict | None = None,
+        config: dict[str, Any] | None = None,
         failure_mode: str | None = None,
         stage: str | None = None,
         run_id: str | None = None,
@@ -163,7 +165,7 @@ class KnowledgeStore:
 
         return "\n".join(lines)
 
-    async def summary(self) -> dict:
+    async def summary(self) -> dict[str, int]:
         """Snapshot for observation tools."""
         counts = await self.backend.count()
         return {

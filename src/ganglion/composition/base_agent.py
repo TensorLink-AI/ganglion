@@ -52,11 +52,11 @@ class BaseAgentWrapper:
         """Return the system prompt for this agent. Must be overridden."""
         raise NotImplementedError("Subclasses must implement build_system_prompt()")
 
-    def build_tools(self, task: Any) -> tuple[list[dict], dict[str, Callable]]:
+    def build_tools(self, task: Any) -> tuple[list[dict[str, Any]], dict[str, Callable[..., Any]]]:
         """Return (tool_schemas, tool_handlers) for this agent. Must be overridden."""
         raise NotImplementedError("Subclasses must implement build_tools()")
 
-    def build_context(self, task: Any) -> list[dict]:
+    def build_context(self, task: Any) -> list[dict[str, Any]]:
         """Return additional context messages to inject. Override if needed."""
         return []
 
@@ -92,7 +92,7 @@ class BaseAgentWrapper:
         result = self.post_process(result, task)
         return result
 
-    def describe(self) -> dict:
+    def describe(self) -> dict[str, Any]:
         """Return a description of this agent for observation tools."""
         return {
             "class": self.__class__.__name__,

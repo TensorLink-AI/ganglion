@@ -37,11 +37,11 @@ class ToolDef:
 
     name: str
     description: str
-    func: Callable
+    func: Callable[..., Any]
     parameters_schema: dict[str, Any]
     category: str = "general"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "description": self.description,
@@ -49,7 +49,7 @@ class ToolDef:
             "category": self.category,
         }
 
-    def to_openai_schema(self) -> dict:
+    def to_openai_schema(self) -> dict[str, Any]:
         """Format as an OpenAI-compatible tool schema."""
         return {
             "type": "function",
@@ -65,7 +65,7 @@ class ToolDef:
 _global_tools: dict[str, ToolDef] = {}
 
 
-def _infer_schema(func: Callable) -> dict[str, Any]:
+def _infer_schema(func: Callable[..., Any]) -> dict[str, Any]:
     """Infer JSON schema from function type hints."""
     sig = inspect.signature(func)
     try:
@@ -110,7 +110,7 @@ def _infer_schema(func: Callable) -> dict[str, Any]:
     return schema
 
 
-def tool(name: str, category: str = "general") -> Callable:
+def tool(name: str, category: str = "general") -> Callable[..., Any]:
     """Decorator to register a function as a tool.
 
     Usage:
@@ -120,7 +120,7 @@ def tool(name: str, category: str = "general") -> Callable:
             ...
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         schema = _infer_schema(func)
         description = inspect.getdoc(func) or f"Tool: {name}"
 
@@ -146,7 +146,7 @@ def tool(name: str, category: str = "general") -> Callable:
     return decorator
 
 
-def get_finish_tool_schema() -> dict:
+def get_finish_tool_schema() -> dict[str, Any]:
     """Return the schema for the universal finish() tool."""
     return {
         "type": "function",
@@ -169,14 +169,14 @@ def get_finish_tool_schema() -> dict:
     }
 
 
-def build_toolset(*names: str) -> tuple[list[dict], dict[str, Callable]]:
+def build_toolset(*names: str) -> tuple[list[dict[str, Any]], dict[str, Callable[..., Any]]]:
     """Build a scoped subset of tools.
 
     Returns (schemas_for_llm, handler_dict).
     Always includes the finish tool.
     """
-    schemas: list[dict] = []
-    handlers: dict[str, Callable] = {}
+    schemas: list[dict[str, Any]] = []
+    handlers: dict[str, Callable[..., Any]] = {}
 
     for name in names:
         if name == "finish":

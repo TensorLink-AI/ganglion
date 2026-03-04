@@ -15,7 +15,7 @@ class AttemptConfig:
     temperature: float = 0.7
     model: str | None = None
     extra_system_context: str | None = None
-    agent_kwargs: dict = field(default_factory=dict)
+    agent_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 class RetryPolicy(Protocol):

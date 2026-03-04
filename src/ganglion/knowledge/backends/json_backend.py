@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
 
@@ -20,26 +21,28 @@ class JsonKnowledgeBackend:
         self._patterns_path = self.directory / "patterns.json"
         self._antipatterns_path = self.directory / "antipatterns.json"
 
-    def _load_patterns(self) -> list[dict]:
+    def _load_patterns(self) -> list[dict[str, Any]]:
         if self._patterns_path.exists():
             try:
-                return json.loads(self._patterns_path.read_text())
+                result: list[dict[str, Any]] = json.loads(self._patterns_path.read_text())
+                return result
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning("Failed to load patterns: %s", e)
         return []
 
-    def _save_patterns(self, data: list[dict]) -> None:
+    def _save_patterns(self, data: list[dict[str, Any]]) -> None:
         self._patterns_path.write_text(json.dumps(data, indent=2, default=str))
 
-    def _load_antipatterns(self) -> list[dict]:
+    def _load_antipatterns(self) -> list[dict[str, Any]]:
         if self._antipatterns_path.exists():
             try:
-                return json.loads(self._antipatterns_path.read_text())
+                result: list[dict[str, Any]] = json.loads(self._antipatterns_path.read_text())
+                return result
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning("Failed to load antipatterns: %s", e)
         return []
 
-    def _save_antipatterns(self, data: list[dict]) -> None:
+    def _save_antipatterns(self, data: list[dict[str, Any]]) -> None:
         self._antipatterns_path.write_text(json.dumps(data, indent=2, default=str))
 
     async def save_pattern(self, pattern: Pattern) -> None:

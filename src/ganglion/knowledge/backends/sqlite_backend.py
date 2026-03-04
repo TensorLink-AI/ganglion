@@ -6,6 +6,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
 
@@ -110,7 +111,7 @@ class SqliteKnowledgeBackend:
 
     async def query_patterns(self, query: KnowledgeQuery) -> list[Pattern]:
         conditions = []
-        params: list = []
+        params: list[Any] = []
 
         if query.capability:
             conditions.append("capability = ?")
@@ -137,7 +138,7 @@ class SqliteKnowledgeBackend:
 
     async def query_antipatterns(self, query: KnowledgeQuery) -> list[Antipattern]:
         conditions = []
-        params: list = []
+        params: list[Any] = []
 
         if query.capability:
             conditions.append("capability = ?")

@@ -101,7 +101,7 @@ class MutationValidator:
     def validate_pipeline(self, pipeline_def: object) -> ValidationResult:
         """Validate a PipelineDef instance."""
         if hasattr(pipeline_def, "validate"):
-            errors = pipeline_def.validate()  # type: ignore[union-attr]
+            errors = pipeline_def.validate()
             return ValidationResult(is_passed=len(errors) == 0, errors=errors)
         return ValidationResult(is_passed=False, errors=["Not a valid PipelineDef"])
 

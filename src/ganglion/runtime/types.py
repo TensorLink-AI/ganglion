@@ -33,5 +33,5 @@ class AgentResult:
     success: bool
     structured: Any = None
     raw_text: str = ""
-    messages: list[dict] = field(default_factory=list)
+    messages: list[dict[str, Any]] = field(default_factory=list)
     turns_used: int = 0

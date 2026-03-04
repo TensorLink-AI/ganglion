@@ -52,7 +52,7 @@ class AgentRegistry:
         """Return all agents as a dict."""
         return dict(self._agents)
 
-    def list_all(self) -> list[dict]:
+    def list_all(self) -> list[dict[str, str]]:
         """List all registered agents with metadata."""
         return [{"name": name, "module": cls.__module__} for name, cls in self._agents.items()]
 

@@ -20,7 +20,7 @@ class StageDef:
     input_keys: list[str] = field(default_factory=list)
     output_keys: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "agent": self.agent,
@@ -104,7 +104,7 @@ class PipelineDef:
             default_retry=self.default_retry,
         )
 
-    def apply_operation(self, op: dict) -> PipelineDef:
+    def apply_operation(self, op: dict[str, Any]) -> PipelineDef:
         """Apply a single pipeline mutation. Returns new PipelineDef.
 
         Operations:
@@ -154,7 +154,7 @@ class PipelineDef:
         """Find a stage by name."""
         return next((stage for stage in self.stages if stage.name == name), None)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serializable representation."""
         return {
             "name": self.name,
