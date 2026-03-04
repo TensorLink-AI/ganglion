@@ -307,10 +307,149 @@ GENERIC_TEMPLATE = SubnetTemplate(
 )
 
 
+_SN50_RUN_EXPERIMENT = '''\
+"""Price-path forecasting experiment for Synth (SN50).
+
+Generates Monte Carlo simulated price paths and evaluates them
+against the validator's CRPS scoring function.
+"""
+
+from ganglion.composition.tool_registry import tool
+from ganglion.composition.tool_returns import ExperimentResult
+
+
+@tool("run_experiment", category="training")
+def run_experiment(config: dict) -> ExperimentResult:
+    """Run a price-path forecasting experiment.
+
+    Expected config keys:
+        asset: str          — target asset ("BTC", "ETH")
+        model_type: str     — forecasting model ("gbm", "jump_diffusion", "regime_switching", "neural_sde")
+        n_paths: int        — number of Monte Carlo paths to simulate (default 1000)
+        horizon_hours: int  — forecast horizon in hours (default 24)
+        volatility_model: str — vol estimator ("ewma", "garch", "realized")
+        drift_estimator: str  — drift method ("historical", "risk_neutral", "ml_predicted")
+    """
+    asset = config.get("asset", "BTC")
+    model_type = config.get("model_type", "gbm")
+    n_paths = config.get("n_paths", 1000)
+    horizon = config.get("horizon_hours", 24)
+
+    # TODO: Replace with real price-path generation logic
+    # This stub returns a placeholder result
+    return ExperimentResult(
+        content=(
+            f"Generated {n_paths} price paths for {asset} "
+            f"using {model_type} model over {horizon}h horizon. "
+            f"CRPS: 0.0 (placeholder)"
+        ),
+        experiment_id=f"sn50-{asset.lower()}-{model_type}-001",
+        metrics={"crps": 0.0, "calibration": 0.0, "sharpness": 0.0},
+        artifact_path=None,
+    )
+'''
+
+SN50_SYNTH_CITY_TEMPLATE = SubnetTemplate(
+    netuid=50,
+    name="Synth City",
+    slug="synth-city",
+    metrics=[
+        {
+            "name": "crps",
+            "direction": "minimize",
+            "weight": 1.0,
+            "description": (
+                "Continuous Ranked Probability Score — measures quality of the "
+                "full predicted probability distribution against realized prices. "
+                "Lower is better."
+            ),
+        },
+        {
+            "name": "calibration",
+            "direction": "minimize",
+            "weight": 0.3,
+            "description": (
+                "How well the predicted quantiles match observed frequencies. "
+                "Perfect calibration = 0."
+            ),
+        },
+        {
+            "name": "sharpness",
+            "direction": "minimize",
+            "weight": 0.2,
+            "description": (
+                "Width of prediction intervals — sharper (narrower) distributions "
+                "score better, but only if well-calibrated."
+            ),
+        },
+    ],
+    tasks={
+        "btc_forecast": {
+            "weight": 0.6,
+            "metadata": {"asset": "BTC", "horizon_hours": 24},
+        },
+        "eth_forecast": {
+            "weight": 0.4,
+            "metadata": {"asset": "ETH", "horizon_hours": 24},
+        },
+    },
+    output_format="price_paths_json",
+    output_description=(
+        "JSON array of simulated price paths. Each path is a list of "
+        "(timestamp, price) pairs. The validator evaluates the full "
+        "distribution of paths against realized prices using CRPS."
+    ),
+    constraints={
+        "min_paths": "100 paths per submission",
+        "max_paths": "10000 paths per submission",
+        "horizon": "24 hours from submission time",
+        "assets": "BTC and ETH (weighted 60/40)",
+        "update_cadence": "Validators request new forecasts every ~30 minutes",
+    },
+    starter_tools={"run_experiment": _SN50_RUN_EXPERIMENT},
+    starter_agent_name="Forecaster",
+    domain_context=(
+        "Synth (SN50) is a probabilistic price forecasting subnet on Bittensor. "
+        "Miners generate Monte Carlo simulated price paths for crypto assets "
+        "(BTC, ETH). The validator scores submissions using CRPS — a proper "
+        "scoring rule that evaluates the full predicted distribution, not just "
+        "point estimates. Good miners produce distributions that are both "
+        "well-calibrated (quantiles match observed frequencies) and sharp "
+        "(tight intervals around the realized price).\n\n"
+        "The competitive dynamic: miners who simply widen their distributions "
+        "to cover all outcomes get poor sharpness scores. Miners who make "
+        "overconfident narrow predictions get poor calibration scores. The "
+        "winning strategy balances both — capturing real volatility structure "
+        "without unnecessary uncertainty."
+    ),
+    search_strategies=[
+        "Start with Geometric Brownian Motion (GBM) as baseline — it's fast and establishes a CRPS floor",
+        "Try jump-diffusion models (Merton) to capture sudden price moves that GBM misses",
+        "Experiment with regime-switching models (bull/bear/sideways) to adapt volatility",
+        "Use GARCH or EWMA for volatility estimation instead of constant vol assumptions",
+        "Neural SDEs can learn drift/diffusion functions from data but need careful regularization",
+        "Ensemble multiple model types — blend GBM paths with jump-diffusion paths",
+        "Calibrate on recent data windows (7-30 days) rather than long historical periods",
+        "Test different path counts: 500 paths is fast for screening, 5000+ for final submissions",
+    ],
+    known_pitfalls=[
+        "Constant volatility assumption (flat vol GBM) fails during high-volatility regimes",
+        "Overfitting to recent price action produces narrow distributions that fail on regime changes",
+        "Too few paths (< 200) leads to noisy CRPS estimates — score variance masks real improvements",
+        "Ignoring overnight/weekend vol patterns degrades BTC forecasts (24/7 market has structure)",
+        "Neural SDE training is unstable with small datasets — use at least 90 days of minute-level data",
+        "Submitting the same distribution for BTC and ETH ignores correlation structure",
+    ],
+)
+
+
 def get_template(subnet: str) -> SubnetTemplate:
     """Look up a built-in template by name or return a customized generic."""
     registry: dict[str, SubnetTemplate] = {
         "generic": GENERIC_TEMPLATE,
+        "sn50": SN50_SYNTH_CITY_TEMPLATE,
+        "synth": SN50_SYNTH_CITY_TEMPLATE,
+        "synth-city": SN50_SYNTH_CITY_TEMPLATE,
     }
 
     if subnet in registry:

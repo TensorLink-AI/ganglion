@@ -29,6 +29,28 @@ class TestCLI:
         main(["init", str(target)])
         assert (target / "config.py").exists()
 
+    def test_init_sn50_template(self, tmp_path):
+        target = tmp_path / "sn50-project"
+        main(["init", str(target), "--subnet", "sn50", "--netuid", "50"])
+        assert (target / "config.py").exists()
+        assert (target / "skill" / "SKILL.md").exists()
+        assert (target / "agents" / "forecaster.py").exists()
+
+        config_text = (target / "config.py").read_text()
+        assert "netuid=50" in config_text
+        assert "crps" in config_text
+
+        skill_text = (target / "skill" / "SKILL.md").read_text()
+        assert "Synth City" in skill_text
+        assert "CRPS" in skill_text or "crps" in skill_text
+
+    def test_init_synth_city_alias(self, tmp_path):
+        target = tmp_path / "synth-city-project"
+        main(["init", str(target), "--subnet", "synth-city", "--netuid", "50"])
+        assert (target / "config.py").exists()
+        config_text = (target / "config.py").read_text()
+        assert "netuid=50" in config_text
+
     def test_status_command(self, tmp_path, capsys):
         # Create a minimal project
         (tmp_path / "config.py").write_text("""
