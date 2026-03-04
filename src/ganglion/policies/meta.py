@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from ganglion.policies.retry import (
-    AttemptConfig,
     EscalatingRetry,
     FixedRetry,
     RetryPolicy,
@@ -39,21 +38,21 @@ class MetaStrategy:
         if not stage_results:
             return FixedRetry(max_attempts=3)
 
-        total = len(stage_results)
-        successes = sum(1 for r in stage_results if r.success)
-        success_rate = successes / total if total > 0 else 0
+        total_runs = len(stage_results)
+        success_count = sum(1 for result in stage_results if result.success)
+        success_rate = success_count / total_runs if total_runs > 0 else 0
 
-        avg_attempts = (
-            sum(r.attempts for r in stage_results) / total if total > 0 else 1
+        average_attempts = (
+            sum(result.attempts for result in stage_results) / total_runs if total_runs > 0 else 1
         )
 
         # High success rate + low attempts => simple retry is fine
-        if success_rate > 0.8 and avg_attempts < 2:
+        if success_rate > 0.8 and average_attempts < 2:
             return FixedRetry(max_attempts=2)
 
         # Moderate success rate => escalating retry
         if success_rate > 0.4:
-            max_attempts = min(int(avg_attempts * 1.5) + 1, 8)
+            max_attempts = min(int(average_attempts * 1.5) + 1, 8)
             return EscalatingRetry(
                 max_attempts=max_attempts,
                 base_temp=0.1,

@@ -177,27 +177,45 @@ ganglion run <project_dir> [--bot-id <id>] [--stage <name>] [--overrides '<json>
 
 Base URL: `http://<host>:<port>` (default `http://127.0.0.1:8899`).
 
-All responses are JSON. Errors return HTTP 400 with `{"errors": [...]}` or HTTP 404/500.
+All endpoints are under the `/v1/` prefix. Unversioned routes (e.g. `/status`) still work for backward compatibility but are deprecated.
+
+**Response envelope:** All successful responses are wrapped in `{"data": <payload>}`. Errors return `{"detail": {"error": {"code": "ERROR_CODE", "message": "..."}}}` with an appropriate HTTP status code (400, 403, 404, 500).
+
+Interactive API docs are available at `/v1/docs` (Swagger UI).
+
+### Health Endpoints
+
+#### GET /healthz
+Liveness probe — returns 200 if the process is alive.
+
+**Response:** `{"status": "ok"}`
+
+#### GET /readyz
+Readiness probe — returns 200 if the bridge is configured and ready. Returns 503 if not yet configured.
+
+**Response:** `{"status": "ready"}`
+
+---
 
 ### Observation Endpoints
 
-#### GET /status
+#### GET /v1/status
 Full framework state snapshot. Same output as `ganglion status`.
 
-#### GET /pipeline
+#### GET /v1/pipeline
 Current pipeline definition.
 
-#### GET /tools
+#### GET /v1/tools
 Registered tools.
 
 | Query Param | Default | Description |
 |-------------|---------|-------------|
 | `category` | — | Filter by category |
 
-#### GET /agents
+#### GET /v1/agents
 Registered agents.
 
-#### GET /runs
+#### GET /v1/runs
 Past pipeline runs.
 
 | Query Param | Default | Description |
@@ -206,7 +224,7 @@ Past pipeline runs.
 
 Returns `[]` if no persistence backend configured.
 
-#### GET /metrics
+#### GET /v1/metrics
 Experiment metrics.
 
 | Query Param | Default | Description |
@@ -215,10 +233,10 @@ Experiment metrics.
 
 Returns `[]` if no persistence backend configured.
 
-#### GET /leaderboard
+#### GET /v1/leaderboard
 Current Bittensor subnet leaderboard. Returns `[]` if no subnet client configured.
 
-#### GET /knowledge
+#### GET /v1/knowledge
 Knowledge store contents.
 
 | Query Param | Default | Description |
@@ -226,18 +244,18 @@ Knowledge store contents.
 | `capability` | — | Filter by capability |
 | `max_entries` | `20` | Max entries per type |
 
-#### GET /source/{path}
-Read any file in the project directory.
+#### GET /v1/source/{path}
+Read any file in the project directory. Path traversal (`..`) is blocked.
 
 | Path Param | Description |
 |------------|-------------|
 | `path` | Relative path within project root |
 
-**Response:** `{"path": "tools/train.py", "content": "..."}`
+**Response:** `{"data": {"path": "tools/train.py", "content": "..."}}`
 
 Returns 404 if file not found.
 
-#### GET /components
+#### GET /v1/components
 Available model components. Returns `[]` if no training framework configured.
 
 ---
@@ -246,7 +264,7 @@ Available model components. Returns `[]` if no training framework configured.
 
 All mutations are blocked while a pipeline is running (`ConcurrentMutationError`).
 
-#### POST /tools
+#### POST /v1/tools
 Write and register a new tool.
 
 **Request:**
@@ -266,11 +284,11 @@ Write and register a new tool.
 - Docstring required
 - No blocked imports: `subprocess`, `os.system`, `shutil.rmtree`, `socket`, `http.server`
 
-**Success:** `{"success": true, "path": "/path/to/tools/my_tool.py"}`
+**Success (201):** `{"data": {"path": "/path/to/tools/my_tool.py"}}`
 
-**Failure (400):** `{"errors": ["No @tool decorator found", "Parameter 'x' missing type hint"]}`
+**Failure (400):** `{"detail": {"error": {"code": "VALIDATION_FAILED", "message": "No @tool decorator found; Parameter 'x' missing type hint"}}}`
 
-#### POST /agents
+#### POST /v1/agents
 Write and register a new agent.
 
 **Request:**
@@ -288,9 +306,9 @@ Write and register a new agent.
 - Must implement `build_system_prompt` and `build_tools`
 - No blocked imports
 
-**Success:** `{"success": true, "path": "/path/to/agents/myagent.py"}`
+**Success (201):** `{"data": {"path": "/path/to/agents/myagent.py"}}`
 
-#### POST /components
+#### POST /v1/components
 Write a model component.
 
 **Request:**
@@ -302,9 +320,9 @@ Write a model component.
 }
 ```
 
-**Success:** `{"success": true, "path": "/path/to/components/my_backbone.py"}`
+**Success (201):** `{"data": {"path": "/path/to/components/my_backbone.py"}}`
 
-#### POST /prompts
+#### POST /v1/prompts
 Write or replace a prompt section for an agent.
 
 **Request:**
@@ -316,11 +334,11 @@ Write or replace a prompt section for an agent.
 }
 ```
 
-**Success:** `{"success": true, "path": "/path/to/prompts/planner.py"}`
+**Success:** `{"data": {"path": "/path/to/prompts/planner.py"}}`
 
 Creates/updates `prompts/{agent_name}.py` with section markers.
 
-#### PATCH /pipeline
+#### PATCH /v1/pipeline
 Apply pipeline modifications atomically.
 
 **Request:**
@@ -329,7 +347,7 @@ Apply pipeline modifications atomically.
   "operations": [
     {"op": "add_stage", "stage": {"name": "validate", "agent": "Validator", "depends_on": ["train"], "input_keys": ["model_path"], "output_keys": ["validation"]}},
     {"op": "remove_stage", "stage_name": "old_stage"},
-    {"op": "update_stage", "stage_name": "train", "updates": {"optional": true, "agent": "NewTrainer"}}
+    {"op": "update_stage", "stage_name": "train", "updates": {"is_optional": true, "agent": "NewTrainer"}}
   ]
 }
 ```
@@ -344,9 +362,9 @@ Apply pipeline modifications atomically.
 
 **Validation:** Pipeline must remain a valid DAG with all agents registered.
 
-**Success:** `{"success": true, "pipeline": {...}}`
+**Success:** `{"data": {"pipeline": {...}}}`
 
-#### PUT /policies/{stage_name}
+#### PUT /v1/policies/{stage_name}
 Swap retry policy for a stage. Use `"default"` as stage_name for the pipeline default.
 
 **Request:**
@@ -356,13 +374,13 @@ Swap retry policy for a stage. Use `"default"` as stage_name for the pipeline de
 }
 ```
 
-**Success:** `{"success": true}`
+**Success:** `{"data": null}`
 
 ---
 
 ### Execution Endpoints
 
-#### POST /run/pipeline
+#### POST /v1/run/pipeline
 Execute the full pipeline.
 
 **Request (optional):**
@@ -375,16 +393,18 @@ Execute the full pipeline.
 **Response:**
 ```json
 {
-  "success": true,
-  "failed_stage": null,
-  "reason": null,
-  "results": {
-    "plan": {"success": true, "attempts": 1, "error": null, "structured": {...}}
+  "data": {
+    "success": true,
+    "failed_stage": null,
+    "reason": null,
+    "results": {
+      "plan": {"success": true, "attempts": 1, "error": null, "structured": {...}}
+    }
   }
 }
 ```
 
-#### POST /run/stage/{stage_name}
+#### POST /v1/run/stage/{stage_name}
 Execute a single pipeline stage in isolation.
 
 **Request (optional):**
@@ -397,14 +417,16 @@ Execute a single pipeline stage in isolation.
 **Response:**
 ```json
 {
-  "success": true,
-  "attempts": 1,
-  "error": null,
-  "structured": {...}
+  "data": {
+    "success": true,
+    "attempts": 1,
+    "error": null,
+    "structured": {...}
+  }
 }
 ```
 
-#### POST /run/experiment
+#### POST /v1/run/experiment
 Run a single experiment directly (bypasses the pipeline). Calls the registered `run_experiment` tool.
 
 **Request:**
@@ -424,23 +446,23 @@ Run a single experiment directly (bypasses the pipeline). Calls the registered `
 }
 ```
 
-Returns `{"success": false, "error": "No 'run_experiment' tool registered"}` if no such tool exists.
+Returns an error response if no `run_experiment` tool is registered.
 
 ---
 
 ### Rollback Endpoints
 
-#### POST /rollback/last
+#### POST /v1/rollback/last
 Undo the most recent mutation.
 
-**Response:** `{"success": true}`
+**Response:** `{"data": null}`
 
-Returns 400 with `{"errors": ["No mutations to rollback"]}` if no mutations exist.
+Returns 400 with `{"detail": {"error": {"code": "ROLLBACK_ERROR", "message": "No mutations to rollback"}}}` if no mutations exist.
 
-#### POST /rollback/{index}
+#### POST /v1/rollback/{index}
 Undo all mutations back to the given index (0 = undo everything).
 
-**Response:** `{"success": true}`
+**Response:** `{"data": null}`
 
 **What gets rolled back per mutation type:**
 - `write_tool` / `write_agent` — file restored or deleted, unregistered from registry

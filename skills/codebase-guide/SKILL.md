@@ -30,7 +30,7 @@ ganglion run ./my-subnet --overrides '{"target_metric":"accuracy"}'
 ganglion serve ./my-subnet --bot-id alpha --port 8899
 
 # Check state (remote mode)
-curl -s "$GANGLION_URL/status" | jq
+curl -s "$GANGLION_URL/v1/status" | jq .data
 ```
 
 ## Mode Detection
@@ -47,6 +47,19 @@ else
   echo "remote"
 fi
 ```
+
+## Response Format
+
+All HTTP bridge endpoints (except health probes) return responses in a standard envelope:
+
+- **Success**: `{"data": <payload>}` — use `jq .data` to extract
+- **Error**: `{"detail": {"error": {"code": "ERROR_CODE", "message": "..."}}}`
+
+Health probes (`/healthz`, `/readyz`) return raw JSON without the envelope.
+
+Interactive API docs: `$GANGLION_URL/v1/docs` (Swagger UI).
+
+> **Note:** Unversioned routes (e.g. `/status`) still work but are deprecated. Always use `/v1/`.
 
 ## How to Run
 
@@ -90,8 +103,8 @@ ganglion run ./my-subnet
 ganglion run ./my-subnet --stage plan
 
 # Remote
-curl -s -X POST "$GANGLION_URL/run/pipeline" -H "Content-Type: application/json" -d '{}' | jq
-curl -s -X POST "$GANGLION_URL/run/stage/plan" -H "Content-Type: application/json" -d '{}' | jq
+curl -s -X POST "$GANGLION_URL/v1/run/pipeline" -H "Content-Type: application/json" -d '{}' | jq .data
+curl -s -X POST "$GANGLION_URL/v1/run/stage/plan" -H "Content-Type: application/json" -d '{}' | jq .data
 ```
 
 ### Mutate at Runtime (Remote Only)
@@ -99,12 +112,12 @@ Register new tools, agents, and components; patch the pipeline; swap retry polic
 
 ```bash
 # Register a tool
-curl -s -X POST "$GANGLION_URL/tools" -H "Content-Type: application/json" \
-  -d '{"name":"my_tool","code":"<code>","category":"training"}' | jq
+curl -s -X POST "$GANGLION_URL/v1/tools" -H "Content-Type: application/json" \
+  -d '{"name":"my_tool","code":"<code>","category":"training"}' | jq .data
 
 # Patch pipeline
-curl -s -X PATCH "$GANGLION_URL/pipeline" -H "Content-Type: application/json" \
-  -d '{"operations":[{"op":"add_stage","stage":{"name":"validate","agent":"Validator","depends_on":["train"]}}]}' | jq
+curl -s -X PATCH "$GANGLION_URL/v1/pipeline" -H "Content-Type: application/json" \
+  -d '{"operations":[{"op":"add_stage","stage":{"name":"validate","agent":"Validator","depends_on":["train"]}}]}' | jq .data
 ```
 
 Pipeline operations: `add_stage`, `remove_stage`, `update_stage`. See `{baseDir}/references/commands.md` for all mutation endpoints.
@@ -117,15 +130,15 @@ Cross-run strategic memory that compounds over time. Records patterns (what work
 ganglion knowledge ./my-subnet --bot-id alpha --capability training
 
 # Remote
-curl -s "$GANGLION_URL/knowledge?capability=training&max_entries=10" | jq
+curl -s "$GANGLION_URL/v1/knowledge?capability=training&max_entries=10" | jq
 ```
 
 ### Rollback
 Undo any mutation. Every mutation is recorded in an audit log with rollback data.
 
 ```bash
-curl -s -X POST "$GANGLION_URL/rollback/last" | jq
-curl -s -X POST "$GANGLION_URL/rollback/0" | jq    # undo ALL mutations
+curl -s -X POST "$GANGLION_URL/v1/rollback/last" | jq
+curl -s -X POST "$GANGLION_URL/v1/rollback/0" | jq    # undo ALL mutations
 ```
 
 ### Multi-Bot Workflows

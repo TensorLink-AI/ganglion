@@ -85,13 +85,23 @@ if [ -n "$GANGLION_URL" ]; then
         fail "curl not found (needed for remote mode)"
     fi
 
-    # Check connectivity
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$GANGLION_URL/status" 2>/dev/null || echo "000")
+    # Check liveness
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$GANGLION_URL/healthz" 2>/dev/null || echo "000")
     if [ "$HTTP_CODE" = "200" ]; then
-        pass "HTTP bridge responding at $GANGLION_URL (HTTP $HTTP_CODE)"
+        pass "Liveness probe OK at $GANGLION_URL/healthz"
+    elif [ "$HTTP_CODE" = "000" ]; then
+        fail "Cannot connect to $GANGLION_URL (connection refused)"
+    else
+        fail "Liveness probe returned HTTP $HTTP_CODE"
+    fi
+
+    # Check readiness
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$GANGLION_URL/readyz" 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "200" ]; then
+        pass "Readiness probe OK at $GANGLION_URL/readyz"
 
         # Check if running
-        RUNNING=$(curl -s "$GANGLION_URL/status" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('running', 'unknown'))" 2>/dev/null || echo "unknown")
+        RUNNING=$(curl -s "$GANGLION_URL/v1/status" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('data', {}).get('running', 'unknown'))" 2>/dev/null || echo "unknown")
         if [ "$RUNNING" = "False" ]; then
             pass "No pipeline currently running"
         elif [ "$RUNNING" = "True" ]; then
@@ -101,17 +111,17 @@ if [ -n "$GANGLION_URL" ]; then
         fi
 
         # Check tool count
-        TOOL_COUNT=$(curl -s "$GANGLION_URL/tools" 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "?")
+        TOOL_COUNT=$(curl -s "$GANGLION_URL/v1/tools" 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data', [])))" 2>/dev/null || echo "?")
         pass "Tools registered: $TOOL_COUNT"
 
         # Check agent count
-        AGENT_COUNT=$(curl -s "$GANGLION_URL/agents" 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "?")
+        AGENT_COUNT=$(curl -s "$GANGLION_URL/v1/agents" 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data', [])))" 2>/dev/null || echo "?")
         pass "Agents registered: $AGENT_COUNT"
 
-    elif [ "$HTTP_CODE" = "000" ]; then
-        fail "Cannot connect to $GANGLION_URL (connection refused)"
+    elif [ "$HTTP_CODE" = "503" ]; then
+        fail "Readiness probe returned 503 — bridge not yet configured"
     else
-        fail "HTTP bridge returned HTTP $HTTP_CODE"
+        fail "Readiness probe returned HTTP $HTTP_CODE"
     fi
 else
     echo "  [SKIP] No GANGLION_URL set (start server with: ganglion serve <project_dir>)"

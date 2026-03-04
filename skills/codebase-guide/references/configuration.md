@@ -97,7 +97,7 @@ pipeline = PipelineDef(
             depends_on=["experiment"],
             input_keys=["experiment_result"],
             output_keys=["evaluation"],
-            optional=True,
+            is_optional=True,
         ),
     ],
     default_retry=FixedRetry(max_attempts=3),
@@ -111,7 +111,7 @@ pipeline = PipelineDef(
 | `name` | `str` | — | Unique stage identifier |
 | `agent` | `str` | — | Name of the registered agent class |
 | `retry` | `RetryPolicy` | `None` | Stage-level retry policy (falls back to pipeline default) |
-| `optional` | `bool` | `False` | If true, pipeline continues even if this stage fails |
+| `is_optional` | `bool` | `False` | If true, pipeline continues even if this stage fails |
 | `depends_on` | `list[str]` | `[]` | Stages that must complete first |
 | `input_keys` | `list[str]` | `[]` | Keys this stage reads from TaskContext |
 | `output_keys` | `list[str]` | `[]` | Keys this stage writes to TaskContext |
@@ -137,7 +137,7 @@ class PersistenceBackend(Protocol):
     async def query_metrics(self, experiment_id=None) -> list[dict]: ...
 ```
 
-Without persistence, `GET /runs` and `GET /metrics` return empty lists.
+Without persistence, `GET /v1/runs` and `GET /v1/metrics` return empty lists.
 
 #### knowledge (KnowledgeStore)
 
@@ -203,6 +203,7 @@ The LLM client defaults can be overridden programmatically in config.py or via a
 | `api_key` | `None` (falls back to `OPENAI_API_KEY`) | API key |
 | `base_url` | `None` (OpenAI default) | Base URL for OpenAI-compatible APIs |
 | `model` | `gpt-4o` | Default model |
+| `request_timeout` | `120.0` | Request timeout in seconds |
 | `max_retries` | `5` | Max LLM API retries |
 | `base_delay` | `1.0` | Initial retry backoff (seconds) |
 | `max_delay` | `60.0` | Maximum retry backoff (seconds) |
@@ -281,7 +282,7 @@ pipeline = PipelineDef(
             input_keys=["plan", "search_space"],
             output_keys=["candidates"],
             retry=FixedRetry(max_attempts=3),
-            optional=True,
+            is_optional=True,
         ),
         StageDef(
             name="train",

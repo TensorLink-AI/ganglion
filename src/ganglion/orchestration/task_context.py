@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 _SENTINEL = object()
 
@@ -84,12 +85,17 @@ class SubnetConfig:
 
         return "\n".join(lines)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "netuid": self.netuid,
             "name": self.name,
             "metrics": [
-                {"name": m.name, "direction": m.direction, "weight": m.weight, "description": m.description}
+                {
+                    "name": m.name,
+                    "direction": m.direction,
+                    "weight": m.weight,
+                    "description": m.description,
+                }
                 for m in self.metrics
             ],
             "tasks": {
@@ -118,7 +124,7 @@ class SlotMeta:
 class TaskContext:
     """Inter-agent shared state with namespaced, typed slots."""
 
-    def __init__(self, subnet_config: SubnetConfig, initial: dict | None = None):
+    def __init__(self, subnet_config: SubnetConfig, initial: dict[str, Any] | None = None):
         self.subnet_config = subnet_config
         self._data: dict[str, Any] = initial or {}
         self._metadata: dict[str, SlotMeta] = {}
@@ -154,7 +160,7 @@ class TaskContext:
         """Return all available keys."""
         return list(self._data.keys())
 
-    def snapshot(self) -> dict:
+    def snapshot(self) -> dict[str, Any]:
         """Returns a read-only copy of all data (for logging/persistence)."""
         return {
             k: {
@@ -164,7 +170,9 @@ class TaskContext:
                     "written_at": self._metadata[k].written_at.isoformat(),
                     "description": self._metadata[k].description,
                     "value_type": self._metadata[k].value_type,
-                } if k in self._metadata else None,
+                }
+                if k in self._metadata
+                else None,
             }
             for k, v in self._data.items()
         }

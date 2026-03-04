@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
+from typing import Any
+
 from ganglion.knowledge.backends.base import KnowledgeBackend
+from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
 
 
 class KnowledgeStore:
@@ -35,43 +37,47 @@ class KnowledgeStore:
         self,
         capability: str,
         description: str,
-        config: dict | None = None,
+        config: dict[str, Any] | None = None,
         metric_value: float | None = None,
         metric_name: str | None = None,
         stage: str | None = None,
         run_id: str | None = None,
     ) -> None:
         """Record a strategy that worked."""
-        await self.backend.save_pattern(Pattern(
-            capability=capability,
-            description=description,
-            config=config,
-            metric_value=metric_value,
-            metric_name=metric_name,
-            stage=stage,
-            run_id=run_id,
-            source_bot=self.bot_id,
-        ))
+        await self.backend.save_pattern(
+            Pattern(
+                capability=capability,
+                description=description,
+                config=config,
+                metric_value=metric_value,
+                metric_name=metric_name,
+                stage=stage,
+                run_id=run_id,
+                source_bot=self.bot_id,
+            )
+        )
 
     async def record_failure(
         self,
         capability: str,
         error_summary: str,
-        config: dict | None = None,
+        config: dict[str, Any] | None = None,
         failure_mode: str | None = None,
         stage: str | None = None,
         run_id: str | None = None,
     ) -> None:
         """Record a strategy that failed."""
-        await self.backend.save_antipattern(Antipattern(
-            capability=capability,
-            error_summary=error_summary[:500],
-            config=config,
-            failure_mode=failure_mode,
-            stage=stage,
-            run_id=run_id,
-            source_bot=self.bot_id,
-        ))
+        await self.backend.save_antipattern(
+            Antipattern(
+                capability=capability,
+                error_summary=error_summary[:500],
+                config=config,
+                failure_mode=failure_mode,
+                stage=stage,
+                run_id=run_id,
+                source_bot=self.bot_id,
+            )
+        )
 
     async def to_prompt_context(
         self,
@@ -159,7 +165,7 @@ class KnowledgeStore:
 
         return "\n".join(lines)
 
-    async def summary(self) -> dict:
+    async def summary(self) -> dict[str, int]:
         """Snapshot for observation tools."""
         counts = await self.backend.count()
         return {

@@ -1,13 +1,18 @@
 """Tests for Layer 4: Policies."""
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
+from ganglion.policies.meta import MetaStrategy
+from ganglion.policies.presets import AGGRESSIVE_PRESET, SIMPLE_PRESET, SN50_PRESET
 from ganglion.policies.retry import (
     AttemptConfig,
-    NoRetry,
-    FixedRetry,
     EscalatingRetry,
+    FixedRetry,
     ModelEscalationRetry,
+    NoRetry,
 )
 from ganglion.policies.stall import (
     ConfigComparisonStallDetector,
@@ -16,8 +21,16 @@ from ganglion.policies.stall import (
 from ganglion.runtime.types import AgentResult
 
 
-def make_result(success: bool = False, structured: dict | None = None, raw_text: str = "") -> AgentResult:
-    return AgentResult(success=success, structured=structured, raw_text=raw_text)
+def make_result(
+    success: bool = False,
+    structured: dict | None = None,
+    raw_text: str = "",
+) -> AgentResult:
+    return AgentResult(
+        success=success,
+        structured=structured,
+        raw_text=raw_text,
+    )
 
 
 class TestNoRetry:
@@ -68,9 +81,7 @@ class TestEscalatingRetry:
         assert config is None
 
     def test_stall_detection(self):
-        detector = ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured or {}
-        )
+        detector = ConfigComparisonStallDetector(extract_config=lambda r: r.structured or {})
         policy = EscalatingRetry(max_attempts=5, stall_detector=detector)
 
         result1 = make_result(structured={"lr": 0.01})
@@ -113,30 +124,22 @@ class TestModelEscalationRetry:
 
 class TestConfigComparisonStallDetector:
     def test_no_stall_on_different_configs(self):
-        detector = ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured or {}
-        )
+        detector = ConfigComparisonStallDetector(extract_config=lambda r: r.structured or {})
         assert detector.is_stalled(0, make_result(structured={"a": 1})) is False
         assert detector.is_stalled(1, make_result(structured={"a": 2})) is False
 
     def test_stall_on_same_config(self):
-        detector = ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured or {}
-        )
+        detector = ConfigComparisonStallDetector(extract_config=lambda r: r.structured or {})
         assert detector.is_stalled(0, make_result(structured={"a": 1})) is False
         assert detector.is_stalled(1, make_result(structured={"a": 1})) is True
 
     def test_divergence_prompt(self):
-        detector = ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured or {}
-        )
+        detector = ConfigComparisonStallDetector(extract_config=lambda r: r.structured or {})
         prompt = detector.divergence_prompt()
         assert "CRITICAL" in prompt
 
     def test_reset(self):
-        detector = ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured or {}
-        )
+        detector = ConfigComparisonStallDetector(extract_config=lambda r: r.structured or {})
         detector.is_stalled(0, make_result(structured={"a": 1}))
         detector.reset()
         # Should not detect stall after reset
@@ -153,3 +156,79 @@ class TestOutputHashStallDetector:
         detector = OutputHashStallDetector(max_repeats=1)
         assert detector.is_stalled(0, make_result(raw_text="same")) is False
         assert detector.is_stalled(1, make_result(raw_text="same")) is True
+
+
+class TestPresets:
+    def test_sn50_preset_has_default_retry(self):
+        assert "default_retry" in SN50_PRESET
+        assert isinstance(SN50_PRESET["default_retry"], EscalatingRetry)
+
+    def test_simple_preset_has_fixed_retry(self):
+        assert "default_retry" in SIMPLE_PRESET
+        assert isinstance(SIMPLE_PRESET["default_retry"], FixedRetry)
+
+    def test_aggressive_preset_has_model_escalation(self):
+        assert "default_retry" in AGGRESSIVE_PRESET
+        assert isinstance(AGGRESSIVE_PRESET["default_retry"], ModelEscalationRetry)
+
+
+class TestMetaStrategy:
+    async def test_no_history_returns_fixed(self):
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=[])
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, FixedRetry)
+
+    async def test_no_matching_stage_returns_fixed(self):
+        run = SimpleNamespace(results={"other_stage": make_result()})
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=[run])
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, FixedRetry)
+
+    async def test_high_success_low_attempts(self):
+        results = [
+            SimpleNamespace(results={"train": SimpleNamespace(success=True, attempts=1)})
+            for _ in range(10)
+        ]
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=results)
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, FixedRetry)
+        assert policy.max_attempts == 2
+
+    async def test_moderate_success_rate(self):
+        results = []
+        for i in range(10):
+            results.append(
+                SimpleNamespace(results={"train": SimpleNamespace(success=i < 6, attempts=3)})
+            )
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=results)
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, EscalatingRetry)
+
+    async def test_low_success_rate(self):
+        results = []
+        for i in range(10):
+            results.append(
+                SimpleNamespace(results={"train": SimpleNamespace(success=i < 2, attempts=5)})
+            )
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=results)
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, EscalatingRetry)
+        assert policy.max_attempts == 8
+
+    async def test_run_without_results_attr(self):
+        run = SimpleNamespace()  # no .results attribute
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=[run])
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, FixedRetry)

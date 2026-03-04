@@ -90,14 +90,14 @@
 
 3. **Observe current state:**
    ```bash
-   curl -s "$GANGLION_URL/status" | jq
-   curl -s "$GANGLION_URL/tools" | jq '.[].name'
-   curl -s "$GANGLION_URL/pipeline" | jq '.stages[].name'
+   curl -s "$GANGLION_URL/v1/status" | jq
+   curl -s "$GANGLION_URL/v1/tools" | jq '.data[].name'
+   curl -s "$GANGLION_URL/v1/pipeline" | jq '.data.stages[].name'
    ```
 
 4. **Register a new tool:**
    ```bash
-   curl -s -X POST "$GANGLION_URL/tools" \
+   curl -s -X POST "$GANGLION_URL/v1/tools" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "evaluate_model",
@@ -108,7 +108,7 @@
 
 5. **Add a new stage to the pipeline:**
    ```bash
-   curl -s -X PATCH "$GANGLION_URL/pipeline" \
+   curl -s -X PATCH "$GANGLION_URL/v1/pipeline" \
      -H "Content-Type: application/json" \
      -d '{
        "operations": [{
@@ -126,19 +126,19 @@
 
 6. **Verify the pipeline:**
    ```bash
-   curl -s "$GANGLION_URL/pipeline" | jq '.stages[] | {name, depends_on}'
+   curl -s "$GANGLION_URL/v1/pipeline" | jq '.data.stages[] | {name, depends_on}'
    ```
 
 7. **Run the pipeline:**
    ```bash
-   curl -s -X POST "$GANGLION_URL/run/pipeline" \
+   curl -s -X POST "$GANGLION_URL/v1/run/pipeline" \
      -H "Content-Type: application/json" \
      -d '{}' | jq
    ```
 
 8. **Check metrics:**
    ```bash
-   curl -s "$GANGLION_URL/metrics" | jq
+   curl -s "$GANGLION_URL/v1/metrics" | jq
    ```
 
 ---
@@ -161,18 +161,18 @@
 
 3. **Run alpha:**
    ```bash
-   curl -s -X POST "http://127.0.0.1:8899/run/pipeline" -H "Content-Type: application/json" -d '{}' | jq .success
+   curl -s -X POST "http://127.0.0.1:8899/v1/run/pipeline" -H "Content-Type: application/json" -d '{}' | jq .data.success
    ```
 
 4. **Run beta:**
    ```bash
-   curl -s -X POST "http://127.0.0.1:8900/run/pipeline" -H "Content-Type: application/json" -d '{}' | jq .success
+   curl -s -X POST "http://127.0.0.1:8900/v1/run/pipeline" -H "Content-Type: application/json" -d '{}' | jq .data.success
    ```
 
 5. **Check shared knowledge from either bot:**
    ```bash
-   curl -s "http://127.0.0.1:8899/knowledge" | jq '.patterns | length'
-   curl -s "http://127.0.0.1:8900/knowledge" | jq '.patterns | length'
+   curl -s "http://127.0.0.1:8899/v1/knowledge" | jq '.data.patterns | length'
+   curl -s "http://127.0.0.1:8900/v1/knowledge" | jq '.data.patterns | length'
    ```
 
 Both bots see patterns from all bots. The knowledge store tags entries with `source_bot` so you can tell who discovered what.
@@ -197,23 +197,23 @@ ganglion run ./sn9-pretrain --bot-id beta
 
 1. **Check mutation count:**
    ```bash
-   curl -s "$GANGLION_URL/status" | jq .mutations
+   curl -s "$GANGLION_URL/v1/status" | jq .data.mutations
    ```
 
 2. **Undo the last mutation:**
    ```bash
-   curl -s -X POST "$GANGLION_URL/rollback/last" | jq
+   curl -s -X POST "$GANGLION_URL/v1/rollback/last" | jq
    ```
 
 3. **Verify the pipeline is valid again:**
    ```bash
-   curl -s "$GANGLION_URL/pipeline" | jq
+   curl -s "$GANGLION_URL/v1/pipeline" | jq
    ```
 
 4. **If multiple bad mutations, undo them all:**
    ```bash
    # Undo everything back to mutation index 0
-   curl -s -X POST "$GANGLION_URL/rollback/0" | jq
+   curl -s -X POST "$GANGLION_URL/v1/rollback/0" | jq
    ```
 
 ---
@@ -226,7 +226,7 @@ ganglion run ./sn9-pretrain --bot-id beta
 
 1. **Run the experiment:**
    ```bash
-   curl -s -X POST "$GANGLION_URL/run/experiment" \
+   curl -s -X POST "$GANGLION_URL/v1/run/experiment" \
      -H "Content-Type: application/json" \
      -d '{"config": {"learning_rate": 0.001, "epochs": 10, "architecture": "resnet18"}}' | jq
    ```
@@ -245,17 +245,17 @@ Note: This calls the registered `run_experiment` tool directly. If no such tool 
 
 1. **Check current pipeline and retry policies:**
    ```bash
-   curl -s "$GANGLION_URL/pipeline" | jq '.stages[] | {name, retry}'
+   curl -s "$GANGLION_URL/v1/pipeline" | jq '.data.stages[] | {name, retry}'
    ```
 
 2. **Swap to escalating retry with stall detection:**
    ```bash
-   curl -s -X PUT "$GANGLION_URL/policies/train" \
+   curl -s -X PUT "$GANGLION_URL/v1/policies/train" \
      -H "Content-Type: application/json" \
      -d '{"retry_policy": {"type": "escalating", "max_attempts": 5, "temperature_step": 0.1}}' | jq
    ```
 
 3. **Re-run the pipeline:**
    ```bash
-   curl -s -X POST "$GANGLION_URL/run/pipeline" -H "Content-Type: application/json" -d '{}' | jq
+   curl -s -X POST "$GANGLION_URL/v1/run/pipeline" -H "Content-Type: application/json" -d '{}' | jq
    ```

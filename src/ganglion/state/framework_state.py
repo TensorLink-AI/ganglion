@@ -6,8 +6,9 @@ import asyncio
 import importlib.util
 import logging
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
+from ganglion.knowledge.store import KnowledgeStore
 from ganglion.orchestration.errors import (
     ConcurrentMutationError,
     PipelineOperationError,
@@ -20,7 +21,6 @@ from ganglion.orchestration.orchestrator import (
 )
 from ganglion.orchestration.pipeline import PipelineDef
 from ganglion.orchestration.task_context import SubnetConfig, TaskContext
-from ganglion.knowledge.store import KnowledgeStore
 from ganglion.state.agent_registry import AgentRegistry
 from ganglion.state.mutation import Mutation, MutationResult
 from ganglion.state.tool_registry import ToolRegistry
@@ -60,7 +60,7 @@ class FrameworkState:
         # Concurrency control
         self._run_lock = asyncio.Lock()
         self._mutation_lock = asyncio.Lock()
-        self._running: bool = False
+        self._is_running: bool = False
 
         # Mutation audit log
         self.mutations: list[Mutation] = []
@@ -144,7 +144,7 @@ class FrameworkState:
                     continue
                 try:
                     tool_registry.register_from_file(py_file)
-                except Exception as e:
+                except (ImportError, SyntaxError, OSError, AttributeError) as e:
                     logger.warning("Failed to load tool from %s: %s", py_file, e)
 
         agent_registry = AgentRegistry()
@@ -155,22 +155,18 @@ class FrameworkState:
                     continue
                 try:
                     # Import and find BaseAgentWrapper subclasses
-                    mod_spec = importlib.util.spec_from_file_location(
-                        py_file.stem, str(py_file)
-                    )
-                    if mod_spec and mod_spec.loader:
-                        mod = importlib.util.module_from_spec(mod_spec)
-                        mod_spec.loader.exec_module(mod)
-                        from ganglion.composition.base_agent import BaseAgentWrapper
+                    module_spec = importlib.util.spec_from_file_location(py_file.stem, str(py_file))
+                    if module_spec and module_spec.loader:
+                        module = importlib.util.module_from_spec(module_spec)
+                        module_spec.loader.exec_module(module)
                         import inspect as _inspect
 
-                        for name, obj in _inspect.getmembers(mod, _inspect.isclass):
-                            if (
-                                issubclass(obj, BaseAgentWrapper)
-                                and obj is not BaseAgentWrapper
-                            ):
+                        from ganglion.composition.base_agent import BaseAgentWrapper
+
+                        for name, obj in _inspect.getmembers(module, _inspect.isclass):
+                            if issubclass(obj, BaseAgentWrapper) and obj is not BaseAgentWrapper:
                                 agent_registry.register(name, obj)
-                except Exception as e:
+                except (ImportError, SyntaxError, OSError, AttributeError) as e:
                     logger.warning("Failed to load agent from %s: %s", py_file, e)
 
         return cls(
@@ -185,7 +181,7 @@ class FrameworkState:
 
     # ── Observation methods ─────────────────────────────────
 
-    async def describe(self) -> dict:
+    async def describe(self) -> dict[str, Any]:
         """Full snapshot of current state for observation tools."""
         return {
             "subnet": self.subnet_config.to_dict(),
@@ -194,7 +190,7 @@ class FrameworkState:
             "agents": self.agent_registry.list_all(),
             "knowledge": (await self.knowledge.summary()) if self.knowledge else None,
             "mutations": len(self.mutations),
-            "running": self._running,
+            "running": self._is_running,
         }
 
     # ── Mutation methods (all go through validation + audit) ─
@@ -211,7 +207,7 @@ class FrameworkState:
             self._check_not_running("Cannot mutate tools during a pipeline run")
 
             result = self.validator.validate_tool(code)
-            if not result.passed:
+            if not result.is_passed:
                 return MutationResult(success=False, errors=result.errors)
 
             path = self.project_root / "tools" / f"{name}.py"
@@ -221,7 +217,7 @@ class FrameworkState:
 
             if test_code:
                 test_result = self._run_test(test_code)
-                if not test_result.passed:
+                if not test_result.is_passed:
                     if previous:
                         path.write_text(previous)
                     else:
@@ -249,14 +245,14 @@ class FrameworkState:
         self,
         name: str,
         code: str,
-        test_task: dict | None = None,
+        test_task: dict[str, Any] | None = None,
     ) -> MutationResult:
         """Write a new agent, validate, and register it."""
         async with self._mutation_lock:
             self._check_not_running("Cannot mutate agents during a pipeline run")
 
             result = self.validator.validate_agent(code)
-            if not result.passed:
+            if not result.is_passed:
                 return MutationResult(success=False, errors=result.errors)
 
             path = self.project_root / "agents" / f"{name.lower()}.py"
@@ -280,7 +276,7 @@ class FrameworkState:
 
     async def apply_pipeline_patch(
         self,
-        operations: list[dict],
+        operations: list[dict[str, Any]],
     ) -> MutationResult:
         """Apply atomic pipeline modifications. Validates before committing."""
         async with self._mutation_lock:
@@ -333,9 +329,7 @@ class FrameworkState:
             if stage_name:
                 stage = self.pipeline_def.get_stage(stage_name)
                 if not stage:
-                    return MutationResult(
-                        success=False, errors=[f"Stage '{stage_name}' not found"]
-                    )
+                    return MutationResult(success=False, errors=[f"Stage '{stage_name}' not found"])
                 previous_policy = stage.retry
                 stage.retry = retry_policy
             else:
@@ -376,33 +370,35 @@ class FrameworkState:
                 section_marker = f"# section: {prompt_section}"
                 lines = previous.splitlines()
                 new_lines = []
-                skip = False
-                replaced = False
+                should_skip = False
+                is_replaced = False
                 for line in lines:
                     if line.strip() == section_marker:
-                        skip = True
-                        replaced = True
+                        should_skip = True
+                        is_replaced = True
                         new_lines.append(section_marker)
                         new_lines.append(f'{prompt_section} = """{content}"""')
                         continue
-                    if skip and line.startswith("# section:"):
-                        skip = False
-                    if not skip:
+                    if should_skip and line.startswith("# section:"):
+                        should_skip = False
+                    if not should_skip:
                         new_lines.append(line)
-                if not replaced:
+                if not is_replaced:
                     new_lines.append("")
                     new_lines.append(section_marker)
                     new_lines.append(f'{prompt_section} = """{content}"""')
                 path.write_text("\n".join(new_lines))
             else:
                 section_marker = f"# section: {prompt_section}"
-                path.write_text(f"{section_marker}\n{prompt_section} = \"\"\"{content}\"\"\"")
+                path.write_text(f'{section_marker}\n{prompt_section} = """{content}"""')
 
             self.mutations.append(
                 Mutation(
                     mutation_type="write_prompt",
                     target=f"{agent_name}/{prompt_section}",
-                    description=f"Updated prompt section '{prompt_section}' for agent '{agent_name}'",
+                    description=(
+                        f"Updated prompt section '{prompt_section}' for agent '{agent_name}'"
+                    ),
                     diff=content,
                     rollback_data={"path": str(path), "previous": previous},
                 )
@@ -412,12 +408,10 @@ class FrameworkState:
 
     # ── Execution methods ───────────────────────────────────
 
-    async def run_pipeline(
-        self, overrides: dict | None = None
-    ) -> PipelineResult:
+    async def run_pipeline(self, overrides: dict[str, Any] | None = None) -> PipelineResult:
         """Execute the current pipeline. Blocks mutations during execution."""
         async with self._run_lock:
-            self._running = True
+            self._is_running = True
             try:
                 task = TaskContext(
                     subnet_config=self.subnet_config,
@@ -436,22 +430,20 @@ class FrameworkState:
                     await self.knowledge.trim()
                 return result
             finally:
-                self._running = False
+                self._is_running = False
 
     async def run_single_stage(
         self,
         stage_name: str,
-        context: dict | None = None,
+        context: dict[str, Any] | None = None,
     ) -> StageResult:
         """Run a single stage in isolation."""
         async with self._run_lock:
-            self._running = True
+            self._is_running = True
             try:
                 stage_def = self.pipeline_def.get_stage(stage_name)
                 if not stage_def:
-                    return StageResult(
-                        success=False, error=f"Stage '{stage_name}' not found"
-                    )
+                    return StageResult(success=False, error=f"Stage '{stage_name}' not found")
 
                 task = TaskContext(
                     subnet_config=self.subnet_config,
@@ -465,9 +457,9 @@ class FrameworkState:
                 )
                 return await orchestrator._execute_stage(stage_def, task)
             finally:
-                self._running = False
+                self._is_running = False
 
-    async def run_direct_experiment(self, config: dict) -> dict:
+    async def run_direct_experiment(self, config: dict[str, Any]) -> dict[str, Any]:
         """Run a single experiment directly, bypassing the pipeline.
 
         This is a thin passthrough — the actual experiment logic lives in
@@ -487,7 +479,10 @@ class FrameworkState:
                     "metrics": result.metrics if hasattr(result, "metrics") else None,
                 }
             return {"success": True, "content": str(result)}
+        except (TypeError, ValueError, KeyError) as e:
+            return {"success": False, "error": str(e)}
         except Exception as e:
+            logger.error("Unexpected error in run_direct_experiment: %s", e, exc_info=True)
             return {"success": False, "error": str(e)}
 
     # ── Rollback ────────────────────────────────────────────
@@ -495,9 +490,7 @@ class FrameworkState:
     async def rollback_last(self) -> MutationResult:
         """Undo the most recent mutation."""
         if not self.mutations:
-            return MutationResult(
-                success=False, errors=["No mutations to rollback"]
-            )
+            return MutationResult(success=False, errors=["No mutations to rollback"])
 
         async with self._mutation_lock:
             self._check_not_running("Cannot rollback during a run")
@@ -518,7 +511,7 @@ class FrameworkState:
     # ── Internal ────────────────────────────────────────────
 
     def _check_not_running(self, message: str) -> None:
-        if self._running:
+        if self._is_running:
             raise ConcurrentMutationError(message)
 
     async def _apply_rollback(self, mutation: Mutation) -> MutationResult:
@@ -564,15 +557,23 @@ class FrameworkState:
                     self.pipeline_def.default_retry = previous_policy
 
             return MutationResult(success=True)
-        except Exception as e:
+        except (OSError, KeyError, TypeError, ValueError) as e:
+            logger.error("Rollback failed for %s: %s", mutation.mutation_type, e)
             return MutationResult(success=False, errors=[str(e)])
 
     def _run_test(self, test_code: str) -> Any:
-        """Run test code and return a ValidationResult-like object."""
+        """Run test code and return a ValidationResult-like object.
+
+        Warning: executes arbitrary code. The MutationValidator should be
+        called first to screen for blocked imports.
+        """
         from ganglion.state.validator import ValidationResult
 
         try:
-            exec(test_code, {"__builtins__": __builtins__})
-            return ValidationResult(passed=True)
+            exec(test_code, {"__builtins__": __builtins__})  # noqa: S102
+            return ValidationResult(is_passed=True)
+        except (AssertionError, TypeError, ValueError, KeyError, AttributeError) as e:
+            return ValidationResult(is_passed=False, errors=[f"Test failed: {e}"])
         except Exception as e:
-            return ValidationResult(passed=False, errors=[str(e)])
+            logger.error("Unexpected error running test code: %s", e)
+            return ValidationResult(is_passed=False, errors=[f"Test error: {e}"])

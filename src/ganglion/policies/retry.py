@@ -15,7 +15,7 @@ class AttemptConfig:
     temperature: float = 0.7
     model: str | None = None
     extra_system_context: str | None = None
-    agent_kwargs: dict = field(default_factory=dict)
+    agent_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 class RetryPolicy(Protocol):
@@ -90,17 +90,18 @@ class EscalatingRetry:
         temp = self.base_temp + (attempt * self.temp_step)
         extra_context = None
 
-        if self.stall_detector and last_result:
-            if self.stall_detector.is_stalled(attempt, last_result):
-                extra_context = self.stall_detector.divergence_prompt()
+        if (
+            self.stall_detector
+            and last_result
+            and self.stall_detector.is_stalled(attempt, last_result)
+        ):
+            extra_context = self.stall_detector.divergence_prompt()
 
         return AttemptConfig(temperature=temp, extra_system_context=extra_context)
 
     def _is_retryable(self, result: AgentResult) -> bool:
         """Check if the error is retryable based on the result."""
-        if result.success:
-            return False
-        return True
+        return not result.success
 
     def __repr__(self) -> str:
         return (

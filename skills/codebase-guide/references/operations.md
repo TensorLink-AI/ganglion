@@ -53,7 +53,14 @@ export GANGLION_URL=http://127.0.0.1:8899
 
 **Verify it's running:**
 ```bash
-curl -s "$GANGLION_URL/status" | jq .running
+# Health check (liveness)
+curl -s "$GANGLION_URL/healthz" | jq
+
+# Readiness check
+curl -s "$GANGLION_URL/readyz" | jq
+
+# Full status
+curl -s "$GANGLION_URL/v1/status" | jq .data.running
 ```
 
 **Stop:**
@@ -69,16 +76,16 @@ ganglion status ./my-subnet
 ### Remote Mode
 ```bash
 # Full status
-curl -s "$GANGLION_URL/status" | jq
+curl -s "$GANGLION_URL/v1/status" | jq
 
 # Is a pipeline currently running?
-curl -s "$GANGLION_URL/status" | jq .running
+curl -s "$GANGLION_URL/v1/status" | jq .data.running
 
 # How many tools/agents are registered?
-curl -s "$GANGLION_URL/status" | jq '{tools: (.tools | length), agents: (.agents | length)}'
+curl -s "$GANGLION_URL/v1/status" | jq '{tools: (.data.tools | length), agents: (.data.agents | length)}'
 
 # Knowledge summary
-curl -s "$GANGLION_URL/knowledge" | jq .summary
+curl -s "$GANGLION_URL/v1/knowledge" | jq .data.summary
 ```
 
 ### Using the Healthcheck Script
@@ -90,16 +97,16 @@ bash skills/codebase-guide/scripts/healthcheck.sh
 
 ```bash
 # Last 5 runs (remote only — requires persistence backend)
-curl -s "$GANGLION_URL/runs?n=5" | jq
+curl -s "$GANGLION_URL/v1/runs?n=5" | jq
 
 # All metrics
-curl -s "$GANGLION_URL/metrics" | jq
+curl -s "$GANGLION_URL/v1/metrics" | jq
 
 # Metrics for a specific experiment
-curl -s "$GANGLION_URL/metrics?experiment_id=exp_001" | jq
+curl -s "$GANGLION_URL/v1/metrics?experiment_id=exp_001" | jq
 
 # Leaderboard
-curl -s "$GANGLION_URL/leaderboard" | jq
+curl -s "$GANGLION_URL/v1/leaderboard" | jq
 ```
 
 ## Running Pipelines
@@ -113,7 +120,7 @@ ganglion run ./my-subnet
 ganglion run ./my-subnet --overrides '{"target_metric": "accuracy", "max_epochs": 50}'
 
 # Remote
-curl -s -X POST "$GANGLION_URL/run/pipeline" \
+curl -s -X POST "$GANGLION_URL/v1/run/pipeline" \
   -H "Content-Type: application/json" \
   -d '{"overrides": {"target_metric": "accuracy"}}' | jq
 ```
@@ -124,7 +131,7 @@ curl -s -X POST "$GANGLION_URL/run/pipeline" \
 ganglion run ./my-subnet --stage plan
 
 # Remote
-curl -s -X POST "$GANGLION_URL/run/stage/plan" \
+curl -s -X POST "$GANGLION_URL/v1/run/stage/plan" \
   -H "Content-Type: application/json" \
   -d '{"context": {"model": "resnet18"}}' | jq
 ```
@@ -133,7 +140,7 @@ curl -s -X POST "$GANGLION_URL/run/stage/plan" \
 Bypass the pipeline and call the `run_experiment` tool directly:
 
 ```bash
-curl -s -X POST "$GANGLION_URL/run/experiment" \
+curl -s -X POST "$GANGLION_URL/v1/run/experiment" \
   -H "Content-Type: application/json" \
   -d '{"config": {"learning_rate": 0.001, "epochs": 10}}' | jq
 ```
@@ -146,7 +153,7 @@ curl -s -X POST "$GANGLION_URL/run/experiment" \
 ganglion knowledge ./my-subnet
 
 # Remote
-curl -s "$GANGLION_URL/knowledge" | jq
+curl -s "$GANGLION_URL/v1/knowledge" | jq
 ```
 
 ### Filter by Capability
@@ -155,7 +162,7 @@ curl -s "$GANGLION_URL/knowledge" | jq
 ganglion knowledge ./my-subnet --capability training --max-entries 10
 
 # Remote
-curl -s "$GANGLION_URL/knowledge?capability=training&max_entries=10" | jq
+curl -s "$GANGLION_URL/v1/knowledge?capability=training&max_entries=10" | jq
 ```
 
 ### Multi-Bot Knowledge
@@ -168,7 +175,7 @@ ganglion knowledge ./my-subnet --bot-id alpha --capability training
 
 ### Register a New Tool
 ```bash
-curl -s -X POST "$GANGLION_URL/tools" \
+curl -s -X POST "$GANGLION_URL/v1/tools" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "my_tool",
@@ -179,7 +186,7 @@ curl -s -X POST "$GANGLION_URL/tools" \
 
 ### Register a New Agent
 ```bash
-curl -s -X POST "$GANGLION_URL/agents" \
+curl -s -X POST "$GANGLION_URL/v1/agents" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "MyAgent",
@@ -189,15 +196,15 @@ curl -s -X POST "$GANGLION_URL/agents" \
 
 ### Verify Registration
 ```bash
-curl -s "$GANGLION_URL/tools" | jq '.[].name'
-curl -s "$GANGLION_URL/agents" | jq '.[].name'
+curl -s "$GANGLION_URL/v1/tools" | jq '.data[].name'
+curl -s "$GANGLION_URL/v1/agents" | jq '.data[].name'
 ```
 
 ## Modifying the Pipeline (Remote Only)
 
 ### Add a Stage
 ```bash
-curl -s -X PATCH "$GANGLION_URL/pipeline" \
+curl -s -X PATCH "$GANGLION_URL/v1/pipeline" \
   -H "Content-Type: application/json" \
   -d '{
     "operations": [{
@@ -215,20 +222,20 @@ curl -s -X PATCH "$GANGLION_URL/pipeline" \
 
 ### Remove a Stage
 ```bash
-curl -s -X PATCH "$GANGLION_URL/pipeline" \
+curl -s -X PATCH "$GANGLION_URL/v1/pipeline" \
   -H "Content-Type: application/json" \
   -d '{"operations": [{"op": "remove_stage", "stage_name": "validate"}]}' | jq
 ```
 
 ### Update a Stage
 ```bash
-curl -s -X PATCH "$GANGLION_URL/pipeline" \
+curl -s -X PATCH "$GANGLION_URL/v1/pipeline" \
   -H "Content-Type: application/json" \
   -d '{
     "operations": [{
       "op": "update_stage",
       "stage_name": "train",
-      "updates": {"agent": "NewTrainer", "optional": true}
+      "updates": {"agent": "NewTrainer", "is_optional": true}
     }]
   }' | jq
 ```
@@ -237,12 +244,12 @@ curl -s -X PATCH "$GANGLION_URL/pipeline" \
 
 ```bash
 # Swap policy for a specific stage
-curl -s -X PUT "$GANGLION_URL/policies/train" \
+curl -s -X PUT "$GANGLION_URL/v1/policies/train" \
   -H "Content-Type: application/json" \
   -d '{"retry_policy": {"type": "escalating", "max_attempts": 5, "temperature_step": 0.1}}' | jq
 
 # Swap the pipeline default policy
-curl -s -X PUT "$GANGLION_URL/policies/default" \
+curl -s -X PUT "$GANGLION_URL/v1/policies/default" \
   -H "Content-Type: application/json" \
   -d '{"retry_policy": {"type": "fixed", "max_attempts": 3}}' | jq
 ```
@@ -251,26 +258,26 @@ curl -s -X PUT "$GANGLION_URL/policies/default" \
 
 ```bash
 # Undo the last mutation
-curl -s -X POST "$GANGLION_URL/rollback/last" | jq
+curl -s -X POST "$GANGLION_URL/v1/rollback/last" | jq
 
 # Undo all mutations (back to index 0)
-curl -s -X POST "$GANGLION_URL/rollback/0" | jq
+curl -s -X POST "$GANGLION_URL/v1/rollback/0" | jq
 
 # Check how many mutations exist
-curl -s "$GANGLION_URL/status" | jq .mutations
+curl -s "$GANGLION_URL/v1/status" | jq .data.mutations
 ```
 
 ## Reading Project Source Files (Remote Only)
 
 ```bash
 # Read a specific tool
-curl -s "$GANGLION_URL/source/tools/train.py" | jq .content -r
+curl -s "$GANGLION_URL/v1/source/tools/train.py" | jq .data.content -r
 
 # Read config
-curl -s "$GANGLION_URL/source/config.py" | jq .content -r
+curl -s "$GANGLION_URL/v1/source/config.py" | jq .data.content -r
 
 # Read an agent
-curl -s "$GANGLION_URL/source/agents/explorer.py" | jq .content -r
+curl -s "$GANGLION_URL/v1/source/agents/explorer.py" | jq .data.content -r
 ```
 
 ## Multi-Bot Setup
@@ -303,7 +310,7 @@ Configure the `FederatedKnowledgeBackend` in `config.py` — see configuration r
 ## Updating Prompts (Remote Only)
 
 ```bash
-curl -s -X POST "$GANGLION_URL/prompts" \
+curl -s -X POST "$GANGLION_URL/v1/prompts" \
   -H "Content-Type: application/json" \
   -d '{
     "agent_name": "Planner",

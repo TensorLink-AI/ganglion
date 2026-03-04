@@ -1,0 +1,46 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+dist/
+build/
+.eggs/
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Development
+.env
+.env.*
+!.env.example
+*.md
+!README.md
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# CI
+.github/
+
+# Skills/docs
+skills/
+docs/

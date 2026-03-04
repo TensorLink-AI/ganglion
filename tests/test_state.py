@@ -2,15 +2,15 @@
 
 import pytest
 
-from ganglion.state.validator import MutationValidator, ValidationResult
-from ganglion.state.mutation import Mutation, MutationResult
-from ganglion.state.agent_registry import AgentRegistry
-from ganglion.state.tool_registry import ToolRegistry
 from ganglion.orchestration.errors import (
+    AgentNotFoundError,
     ToolAlreadyRegisteredError,
     ToolNotFoundError,
-    AgentNotFoundError,
 )
+from ganglion.state.agent_registry import AgentRegistry
+from ganglion.state.mutation import Mutation, MutationResult
+from ganglion.state.tool_registry import ToolRegistry
+from ganglion.state.validator import MutationValidator
 
 
 class TestMutationValidator:
@@ -27,7 +27,7 @@ def my_tool(x: int, y: str = "hi") -> str:
     return f"{x}:{y}"
 '''
         result = self.validator.validate_tool(code)
-        assert result.passed is True
+        assert result.is_passed is True
         assert result.errors == []
 
     def test_tool_missing_decorator(self):
@@ -37,7 +37,7 @@ def my_tool(x: int) -> str:
     return str(x)
 '''
         result = self.validator.validate_tool(code)
-        assert result.passed is False
+        assert result.is_passed is False
         assert any("@tool" in e for e in result.errors)
 
     def test_tool_missing_type_hint(self):
@@ -50,19 +50,19 @@ def my_tool(x, y: str = "hi") -> str:
     return str(x)
 '''
         result = self.validator.validate_tool(code)
-        assert result.passed is False
+        assert result.is_passed is False
         assert any("type hint" in e for e in result.errors)
 
     def test_tool_missing_docstring(self):
-        code = '''
+        code = """
 from ganglion.composition.tool_registry import tool
 
 @tool("my_tool")
 def my_tool(x: int) -> str:
     return str(x)
-'''
+"""
         result = self.validator.validate_tool(code)
-        assert result.passed is False
+        assert result.is_passed is False
         assert any("docstring" in e for e in result.errors)
 
     def test_tool_blocked_import(self):
@@ -76,17 +76,17 @@ def my_tool(x: int) -> str:
     return str(x)
 '''
         result = self.validator.validate_tool(code)
-        assert result.passed is False
+        assert result.is_passed is False
         assert any("Blocked" in e for e in result.errors)
 
     def test_tool_syntax_error(self):
         code = "def broken(:"
         result = self.validator.validate_tool(code)
-        assert result.passed is False
+        assert result.is_passed is False
         assert any("Syntax" in e for e in result.errors)
 
     def test_valid_agent(self):
-        code = '''
+        code = """
 from ganglion.composition.base_agent import BaseAgentWrapper
 
 class MyAgent(BaseAgentWrapper):
@@ -95,28 +95,28 @@ class MyAgent(BaseAgentWrapper):
 
     def build_tools(self, task):
         return [], {}
-'''
+"""
         result = self.validator.validate_agent(code)
-        assert result.passed is True
+        assert result.is_passed is True
 
     def test_agent_missing_class(self):
-        code = '''
+        code = """
 def not_an_agent():
     pass
-'''
+"""
         result = self.validator.validate_agent(code)
-        assert result.passed is False
+        assert result.is_passed is False
         assert any("BaseAgentWrapper" in e for e in result.errors)
 
     def test_agent_missing_methods(self):
-        code = '''
+        code = """
 from ganglion.composition.base_agent import BaseAgentWrapper
 
 class MyAgent(BaseAgentWrapper):
     pass
-'''
+"""
         result = self.validator.validate_agent(code)
-        assert result.passed is False
+        assert result.is_passed is False
         assert any("build_system_prompt" in e for e in result.errors)
         assert any("build_tools" in e for e in result.errors)
 

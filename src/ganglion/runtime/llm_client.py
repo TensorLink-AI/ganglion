@@ -10,12 +10,12 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 try:
-    from openai import AsyncOpenAI, APIError, RateLimitError, APIConnectionError
+    from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 except ImportError:
-    AsyncOpenAI = None  # type: ignore[assignment, misc]
-    APIError = Exception  # type: ignore[assignment, misc]
-    RateLimitError = Exception  # type: ignore[assignment, misc]
-    APIConnectionError = Exception  # type: ignore[assignment, misc]
+    AsyncOpenAI = None  # type: ignore[assignment,misc]
+    APIError = Exception  # type: ignore[assignment,misc]
+    RateLimitError = Exception  # type: ignore[assignment,misc]
+    APIConnectionError = Exception  # type: ignore[assignment,misc]
 
 
 class LLMClient:
@@ -29,23 +29,29 @@ class LLMClient:
         max_retries: int = 5,
         base_delay: float = 1.0,
         max_delay: float = 60.0,
+        request_timeout: float = 120.0,
     ):
         if AsyncOpenAI is None:
             raise ImportError("openai package is required. Install with: pip install openai")
-        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=request_timeout,
+        )
         self.model = model
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.max_delay = max_delay
+        self.request_timeout = request_timeout
 
     async def chat_completion(
         self,
         messages: list[dict[str, Any]],
-        tools: list[dict] | None = None,
+        tools: list[dict[str, Any]] | None = None,
         temperature: float = 0.7,
         model: str | None = None,
         **kwargs: Any,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Send a chat completion request with exponential backoff on transient errors."""
         request_kwargs: dict[str, Any] = {
             "model": model or self.model,
@@ -71,7 +77,7 @@ class LLMClient:
             except (RateLimitError, APIConnectionError) as e:
                 last_error = e
                 if attempt < self.max_retries:
-                    delay = min(self.base_delay * (2 ** attempt), self.max_delay)
+                    delay = min(self.base_delay * (2**attempt), self.max_delay)
                     logger.warning(
                         "Retryable error (attempt %d/%d): %s. Retrying in %.1fs",
                         attempt + 1,
@@ -81,10 +87,10 @@ class LLMClient:
                     )
                     await asyncio.sleep(delay)
             except APIError as e:
-                if e.status_code and e.status_code >= 500:
-                    last_error = e
+                if getattr(e, "status_code", None) and e.status_code >= 500:  # type: ignore[attr-defined]
+                    last_error = e  # type: ignore[assignment]
                     if attempt < self.max_retries:
-                        delay = min(self.base_delay * (2 ** attempt), self.max_delay)
+                        delay = min(self.base_delay * (2**attempt), self.max_delay)
                         logger.warning(
                             "Server error (attempt %d/%d): %s. Retrying in %.1fs",
                             attempt + 1,
@@ -98,7 +104,7 @@ class LLMClient:
 
         raise last_error  # type: ignore[misc]
 
-    def _parse_response(self, response: Any) -> dict:
+    def _parse_response(self, response: Any) -> dict[str, Any]:
         """Parse the OpenAI response into a standardized dict."""
         choice = response.choices[0]
         message = choice.message
@@ -111,14 +117,14 @@ class LLMClient:
         if message.tool_calls:
             result["tool_calls"] = [
                 {
-                    "id": tc.id,
+                    "id": tool_call.id,
                     "type": "function",
                     "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments,
                     },
                 }
-                for tc in message.tool_calls
+                for tool_call in message.tool_calls
             ]
 
         result["finish_reason"] = choice.finish_reason

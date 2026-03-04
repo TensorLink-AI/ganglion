@@ -6,12 +6,13 @@ All examples use `GANGLION_URL=http://127.0.0.1:8899`.
 
 ### Get Full Status
 ```bash
-curl -s "$GANGLION_URL/status" | jq
+curl -s "$GANGLION_URL/v1/status" | jq
 ```
 ```json
 {
-  "subnet": {
-    "netuid": 9,
+  "data": {
+    "subnet": {
+      "netuid": 9,
     "name": "SN9 Pretrain",
     "metrics": [{"name": "loss", "direction": "minimize", "weight": 1.0, "description": "Cross-entropy loss"}],
     "tasks": {"pretrain": {"name": "pretrain", "weight": 1.0, "metadata": {}}},
@@ -34,41 +35,45 @@ curl -s "$GANGLION_URL/status" | jq
     {"name": "Trainer", "module": "trainer"}
   ],
   "knowledge": {"patterns": 12, "antipatterns": 5},
-  "mutations": 0,
-  "running": false
+    "mutations": 0,
+    "running": false
+  }
 }
 ```
 
 ### List Tools (Filtered)
 ```bash
-curl -s "$GANGLION_URL/tools?category=training" | jq
+curl -s "$GANGLION_URL/v1/tools?category=training" | jq
 ```
 ```json
-[
-  {
-    "name": "run_experiment",
-    "description": "Run a training experiment with the given config.",
-    "category": "training",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "config": {"type": "object"}
-      },
-      "required": ["config"]
+{
+  "data": [
+    {
+      "name": "run_experiment",
+      "description": "Run a training experiment with the given config.",
+      "category": "training",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "config": {"type": "object"}
+        },
+        "required": ["config"]
+      }
     }
-  }
-]
+  ]
+}
 ```
 
 ### Get Knowledge (Filtered)
 ```bash
-curl -s "$GANGLION_URL/knowledge?capability=training&max_entries=3" | jq
+curl -s "$GANGLION_URL/v1/knowledge?capability=training&max_entries=3" | jq
 ```
 ```json
 {
-  "patterns": [
-    {
-      "capability": "training",
+  "data": {
+    "patterns": [
+      {
+        "capability": "training",
       "description": "Conv+Gaussian head achieved best CRPS",
       "config": {"architecture": "conv_gaussian", "lr": 0.001},
       "metric_value": 0.85,
@@ -89,13 +94,14 @@ curl -s "$GANGLION_URL/knowledge?capability=training&max_entries=3" | jq
       "source_bot": "alpha"
     }
   ],
-  "summary": {"patterns": 12, "antipatterns": 5}
+    "summary": {"patterns": 12, "antipatterns": 5}
+  }
 }
 ```
 
 ### Read Source File
 ```bash
-curl -s "$GANGLION_URL/source/tools/run_experiment.py" | jq .content -r
+curl -s "$GANGLION_URL/v1/source/tools/run_experiment.py" | jq .data.content -r
 ```
 ```python
 from ganglion.composition.tool_registry import tool
@@ -113,16 +119,18 @@ def run_experiment(config: dict) -> ExperimentResult:
 
 ### Get Run History
 ```bash
-curl -s "$GANGLION_URL/runs?n=3" | jq
+curl -s "$GANGLION_URL/v1/runs?n=3" | jq
 ```
 ```json
-[
-  {
-    "success": true,
-    "failed_stage": null,
-    "results": {"plan": {"success": true, "attempts": 1}, "train": {"success": true, "attempts": 2}}
-  }
-]
+{
+  "data": [
+    {
+      "success": true,
+      "failed_stage": null,
+      "results": {"plan": {"success": true, "attempts": 1}, "train": {"success": true, "attempts": 2}}
+    }
+  ]
+}
 ```
 
 ---
@@ -131,49 +139,55 @@ curl -s "$GANGLION_URL/runs?n=3" | jq
 
 ### Run Full Pipeline
 ```bash
-curl -s -X POST "$GANGLION_URL/run/pipeline" \
+curl -s -X POST "$GANGLION_URL/v1/run/pipeline" \
   -H "Content-Type: application/json" \
   -d '{"overrides": {"target_metric": "accuracy"}}' | jq
 ```
 ```json
 {
-  "success": true,
-  "failed_stage": null,
-  "reason": null,
-  "results": {
-    "plan": {"success": true, "attempts": 1, "error": null, "structured": {"plan": "..."}},
-    "train": {"success": true, "attempts": 2, "error": null, "structured": {"metrics": {"accuracy": 0.92}}}
+  "data": {
+    "success": true,
+    "failed_stage": null,
+    "reason": null,
+    "results": {
+      "plan": {"success": true, "attempts": 1, "error": null, "structured": {"plan": "..."}},
+      "train": {"success": true, "attempts": 2, "error": null, "structured": {"metrics": {"accuracy": 0.92}}}
+    }
   }
 }
 ```
 
 ### Run Single Stage
 ```bash
-curl -s -X POST "$GANGLION_URL/run/stage/plan" \
+curl -s -X POST "$GANGLION_URL/v1/run/stage/plan" \
   -H "Content-Type: application/json" \
   -d '{"context": {"model_family": "transformer"}}' | jq
 ```
 ```json
 {
-  "success": true,
-  "attempts": 1,
-  "error": null,
-  "structured": {"plan": "Try transformer with attention heads 4, 8, 16"}
+  "data": {
+    "success": true,
+    "attempts": 1,
+    "error": null,
+    "structured": {"plan": "Try transformer with attention heads 4, 8, 16"}
+  }
 }
 ```
 
 ### Run Direct Experiment
 ```bash
-curl -s -X POST "$GANGLION_URL/run/experiment" \
+curl -s -X POST "$GANGLION_URL/v1/run/experiment" \
   -H "Content-Type: application/json" \
   -d '{"config": {"learning_rate": 0.001, "epochs": 10}}' | jq
 ```
 ```json
 {
-  "success": true,
-  "content": "Experiment completed with config: {'learning_rate': 0.001, 'epochs': 10}",
-  "structured": null,
-  "metrics": null
+  "data": {
+    "success": true,
+    "content": "Experiment completed with config: {'learning_rate': 0.001, 'epochs': 10}",
+    "structured": null,
+    "metrics": null
+  }
 }
 ```
 
@@ -183,7 +197,7 @@ curl -s -X POST "$GANGLION_URL/run/experiment" \
 
 ### Register a Tool
 ```bash
-curl -s -X POST "$GANGLION_URL/tools" \
+curl -s -X POST "$GANGLION_URL/v1/tools" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "analyze_results",
@@ -192,47 +206,48 @@ curl -s -X POST "$GANGLION_URL/tools" \
   }' | jq
 ```
 ```json
-{"success": true, "path": "/home/user/sn9-pretrain/tools/analyze_results.py"}
+{"data": {"path": "/home/user/sn9-pretrain/tools/analyze_results.py"}}
 ```
 
 ### Register a Tool (Validation Failure)
 ```bash
-curl -s -X POST "$GANGLION_URL/tools" \
+curl -s -X POST "$GANGLION_URL/v1/tools" \
   -H "Content-Type: application/json" \
   -d '{"name": "bad_tool", "code": "def bad_tool(x):\n    pass", "category": "misc"}' | jq
 ```
 ```json
-{"detail": {"errors": ["No @tool decorator found", "Function 'bad_tool' missing docstring"]}}
+{"detail": {"error": {"code": "VALIDATION_FAILED", "message": "No @tool decorator found; Function 'bad_tool' missing docstring"}}}
 ```
 
 ### Patch Pipeline
 ```bash
-curl -s -X PATCH "$GANGLION_URL/pipeline" \
+curl -s -X PATCH "$GANGLION_URL/v1/pipeline" \
   -H "Content-Type: application/json" \
   -d '{
     "operations": [
       {"op": "add_stage", "stage": {"name": "analyze", "agent": "Explorer", "depends_on": ["train"], "input_keys": ["metrics"], "output_keys": ["analysis"]}},
-      {"op": "update_stage", "stage_name": "train", "updates": {"optional": true}}
+      {"op": "update_stage", "stage_name": "train", "updates": {"is_optional": true}}
     ]
   }' | jq
 ```
 ```json
 {
-  "success": true,
-  "pipeline": {
-    "name": "sn9-pipeline",
-    "stages": [
-      {"name": "plan", "agent": "Planner", "depends_on": []},
-      {"name": "train", "agent": "Trainer", "depends_on": ["plan"], "optional": true},
-      {"name": "analyze", "agent": "Explorer", "depends_on": ["train"]}
-    ]
+  "data": {
+    "pipeline": {
+      "name": "sn9-pipeline",
+      "stages": [
+        {"name": "plan", "agent": "Planner", "depends_on": []},
+        {"name": "train", "agent": "Trainer", "depends_on": ["plan"], "is_optional": true},
+        {"name": "analyze", "agent": "Explorer", "depends_on": ["train"]}
+      ]
+    }
   }
 }
 ```
 
 ### Update a Prompt
 ```bash
-curl -s -X POST "$GANGLION_URL/prompts" \
+curl -s -X POST "$GANGLION_URL/v1/prompts" \
   -H "Content-Type: application/json" \
   -d '{
     "agent_name": "Trainer",
@@ -241,7 +256,7 @@ curl -s -X POST "$GANGLION_URL/prompts" \
   }' | jq
 ```
 ```json
-{"success": true, "path": "/home/user/sn9-pretrain/prompts/trainer.py"}
+{"data": {"path": "/home/user/sn9-pretrain/prompts/trainer.py"}}
 ```
 
 ---
@@ -250,24 +265,24 @@ curl -s -X POST "$GANGLION_URL/prompts" \
 
 ### Undo Last Mutation
 ```bash
-curl -s -X POST "$GANGLION_URL/rollback/last" | jq
+curl -s -X POST "$GANGLION_URL/v1/rollback/last" | jq
 ```
 ```json
-{"success": true}
+{"data": null}
 ```
 
 ### Undo All Mutations
 ```bash
-curl -s -X POST "$GANGLION_URL/rollback/0" | jq
+curl -s -X POST "$GANGLION_URL/v1/rollback/0" | jq
 ```
 ```json
-{"success": true}
+{"data": null}
 ```
 
 ### Rollback When No Mutations Exist
 ```bash
-curl -s -X POST "$GANGLION_URL/rollback/last" | jq
+curl -s -X POST "$GANGLION_URL/v1/rollback/last" | jq
 ```
 ```json
-{"detail": {"errors": ["No mutations to rollback"]}}
+{"detail": {"error": {"code": "ROLLBACK_ERROR", "message": "No mutations to rollback"}}}
 ```

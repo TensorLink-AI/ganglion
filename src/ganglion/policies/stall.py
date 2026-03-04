@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Protocol
+from collections.abc import Callable
+from typing import Any, Protocol
 
 from ganglion.runtime.types import AgentResult
 
@@ -22,9 +23,9 @@ class StallDetector(Protocol):
 class ConfigComparisonStallDetector:
     """Detects stalls by comparing experiment configs across attempts."""
 
-    def __init__(self, extract_config: Callable[[AgentResult], dict]):
+    def __init__(self, extract_config: Callable[[AgentResult], dict[str, Any]]):
         self.extract_config = extract_config
-        self.previous_configs: list[dict] = []
+        self.previous_configs: list[dict[str, Any]] = []
 
     def is_stalled(self, attempt: int, last_result: AgentResult) -> bool:
         try:
@@ -32,9 +33,9 @@ class ConfigComparisonStallDetector:
         except (KeyError, TypeError, AttributeError):
             return False
 
-        is_dup = config in self.previous_configs
+        is_duplicate = config in self.previous_configs
         self.previous_configs.append(config)
-        return is_dup
+        return is_duplicate
 
     def divergence_prompt(self) -> str:
         return (

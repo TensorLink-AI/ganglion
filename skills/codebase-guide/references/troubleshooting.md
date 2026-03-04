@@ -100,7 +100,7 @@ echo $OPENAI_API_KEY | head -c 10
 # View the pipeline to find the cycle
 ganglion pipeline ./my-subnet
 # or
-curl -s "$GANGLION_URL/pipeline" | jq '.stages[] | {name, depends_on}'
+curl -s "$GANGLION_URL/v1/pipeline" | jq '.data.stages[] | {name, depends_on}'
 ```
 Remove or restructure the circular dependency.
 
@@ -151,7 +151,7 @@ ls ./my-subnet/agents/
 
 ```bash
 # Check if a run is in progress
-curl -s "$GANGLION_URL/status" | jq .running
+curl -s "$GANGLION_URL/v1/status" | jq .data.running
 ```
 
 ### Tool validation failed: No @tool decorator found
@@ -238,10 +238,10 @@ cat ./my-subnet/knowledge/patterns.json | python3 -m json.tool | head -20
 **Fix:**
 ```bash
 # Check if the server is running
-curl -s http://127.0.0.1:8899/status | jq
+curl -s http://127.0.0.1:8899/v1/status | jq
 
 # Try with the correct host/port
-curl -s http://<host>:<port>/status | jq
+curl -s http://<host>:<port>/v1/status | jq
 ```
 
 ### Server returns 500: Bridge not configured

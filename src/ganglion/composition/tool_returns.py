@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -10,7 +11,7 @@ class ToolOutput:
     """Base return type. Content is passed to the LLM as a string."""
 
     content: str
-    structured: dict | None = None
+    structured: dict[str, Any] | None = None
 
 
 @dataclass
@@ -26,6 +27,6 @@ class ExperimentResult(ToolOutput):
 class ValidationResult(ToolOutput):
     """Returned by validation tools."""
 
-    passed: bool = False
+    is_passed: bool = False
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

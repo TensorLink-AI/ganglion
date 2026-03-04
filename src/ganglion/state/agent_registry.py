@@ -31,9 +31,7 @@ class AgentRegistry:
         if cls is None:
             raise AgentNotFoundError(f"Class '{class_name}' not found in {path}")
         if not (inspect.isclass(cls) and issubclass(cls, BaseAgentWrapper)):
-            raise AgentValidationError(
-                f"'{class_name}' does not subclass BaseAgentWrapper"
-            )
+            raise AgentValidationError(f"'{class_name}' does not subclass BaseAgentWrapper")
         self.register(class_name, cls)
 
     def unregister(self, name: str) -> None:
@@ -54,12 +52,9 @@ class AgentRegistry:
         """Return all agents as a dict."""
         return dict(self._agents)
 
-    def list_all(self) -> list[dict]:
+    def list_all(self) -> list[dict[str, str]]:
         """List all registered agents with metadata."""
-        return [
-            {"name": name, "module": cls.__module__}
-            for name, cls in self._agents.items()
-        ]
+        return [{"name": name, "module": cls.__module__} for name, cls in self._agents.items()]
 
     def _import_module_from_path(self, path: Path) -> Any:
         """Dynamically import a Python module from a file path."""

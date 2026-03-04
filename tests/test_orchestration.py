@@ -2,26 +2,24 @@
 
 import pytest
 
-from ganglion.orchestration.pipeline import PipelineDef, StageDef
-from ganglion.orchestration.task_context import (
-    TaskContext,
-    SubnetConfig,
-    MetricDef,
-    TaskDef,
-    OutputSpec,
-)
-from ganglion.orchestration.events import (
-    StageStarted,
-    StageCompleted,
-    StageRetry,
-    StageSkipped,
-)
 from ganglion.orchestration.errors import (
     AgentError,
     EnvironmentError,
     InfrastructureError,
     PipelineOperationError,
     PipelineValidationError,
+)
+from ganglion.orchestration.events import (
+    StageCompleted,
+    StageStarted,
+)
+from ganglion.orchestration.pipeline import PipelineDef, StageDef
+from ganglion.orchestration.task_context import (
+    MetricDef,
+    OutputSpec,
+    SubnetConfig,
+    TaskContext,
+    TaskDef,
 )
 
 
@@ -219,12 +217,12 @@ class TestPipelineDef:
     def test_apply_update_stage(self):
         p = PipelineDef(
             name="test",
-            stages=[StageDef(name="a", agent="A", optional=False)],
+            stages=[StageDef(name="a", agent="A", is_optional=False)],
         )
         p2 = p.apply_operation(
-            {"op": "update_stage", "stage_name": "a", "updates": {"optional": True}}
+            {"op": "update_stage", "stage_name": "a", "updates": {"is_optional": True}}
         )
-        assert p2.stages[0].optional is True
+        assert p2.stages[0].is_optional is True
 
     def test_apply_update_invalid_field(self):
         p = PipelineDef(name="test", stages=[StageDef(name="a", agent="A")])
@@ -285,9 +283,9 @@ class TestEvents:
 
 class TestErrors:
     def test_retryable_flags(self):
-        assert AgentError.retryable is True
-        assert EnvironmentError.retryable is False
-        assert InfrastructureError.retryable is True
+        assert AgentError.is_retryable is True
+        assert EnvironmentError.is_retryable is False
+        assert InfrastructureError.is_retryable is True
 
     def test_error_hierarchy(self):
         assert issubclass(EnvironmentError, AgentError)

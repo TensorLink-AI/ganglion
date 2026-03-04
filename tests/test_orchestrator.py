@@ -2,19 +2,19 @@
 
 import pytest
 
-from ganglion.orchestration.orchestrator import PipelineOrchestrator, PipelineResult, StageResult
+from ganglion.composition.base_agent import BaseAgentWrapper
+from ganglion.orchestration.events import PipelineEvent
+from ganglion.orchestration.orchestrator import PipelineOrchestrator
 from ganglion.orchestration.pipeline import PipelineDef, StageDef
 from ganglion.orchestration.task_context import (
-    TaskContext,
-    SubnetConfig,
     MetricDef,
-    TaskDef,
     OutputSpec,
+    SubnetConfig,
+    TaskContext,
+    TaskDef,
 )
-from ganglion.orchestration.events import PipelineEvent, StageStarted, StageCompleted
-from ganglion.composition.base_agent import BaseAgentWrapper
+from ganglion.policies.retry import FixedRetry
 from ganglion.runtime.types import AgentResult
-from ganglion.policies.retry import FixedRetry, NoRetry
 
 
 def make_config() -> SubnetConfig:
@@ -56,6 +56,7 @@ class FailAgent(BaseAgentWrapper):
 
 class ConditionalAgent(BaseAgentWrapper):
     """Agent that succeeds on the Nth attempt."""
+
     _attempt_count = 0
 
     def build_system_prompt(self, task):
@@ -105,7 +106,12 @@ class TestPipelineOrchestrator:
             name="test",
             stages=[
                 StageDef(name="plan", agent="SuccessAgent", output_keys=["output"]),
-                StageDef(name="train", agent="SuccessAgent", depends_on=["plan"], input_keys=["output"]),
+                StageDef(
+                    name="train",
+                    agent="SuccessAgent",
+                    depends_on=["plan"],
+                    input_keys=["output"],
+                ),
             ],
         )
         orchestrator = PipelineOrchestrator(
@@ -139,7 +145,12 @@ class TestPipelineOrchestrator:
             name="test",
             stages=[
                 StageDef(name="step1", agent="FailAgent"),
-                StageDef(name="step2", agent="SuccessAgent", depends_on=["step1"], optional=True),
+                StageDef(
+                    name="step2",
+                    agent="SuccessAgent",
+                    depends_on=["step1"],
+                    is_optional=True,
+                ),
                 StageDef(name="step3", agent="SuccessAgent"),
             ],
         )
@@ -216,5 +227,6 @@ class TestPipelineOrchestrator:
             agents={"A": SuccessAgent, "B": SuccessAgent},
         )
         from ganglion.orchestration.errors import PipelineValidationError
+
         with pytest.raises(PipelineValidationError):
             await orchestrator.run(TaskContext(make_config()))

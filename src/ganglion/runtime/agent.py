@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from ganglion.runtime.types import AgentResult, ToolCall, ToolResult
 from ganglion.runtime.coerce import CoercionPipeline
 from ganglion.runtime.llm_client import LLMClient
+from ganglion.runtime.types import AgentResult, ToolCall, ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +24,9 @@ class SimpleAgent:
         self,
         llm_client: LLMClient,
         system_prompt: str,
-        tools_schema: list[dict],
-        tool_handlers: dict[str, Callable],
-        context_messages: list[dict] | None = None,
+        tools_schema: list[dict[str, Any]],
+        tool_handlers: dict[str, Callable[..., Any]],
+        context_messages: list[dict[str, Any]] | None = None,
         max_turns: int = 50,
         temperature: float = 0.7,
         model: str | None = None,
@@ -75,11 +76,13 @@ class SimpleAgent:
             for tc in tool_calls:
                 result = await self._execute_tool(tc)
                 results.append(result)
-                self.messages.append({
-                    "role": "tool",
-                    "tool_call_id": result.tool_call_id,
-                    "content": result.content,
-                })
+                self.messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": result.tool_call_id,
+                        "content": result.content,
+                    }
+                )
 
                 if result.is_finish:
                     return AgentResult(
@@ -100,17 +103,17 @@ class SimpleAgent:
             turns_used=self.max_turns,
         )
 
-    def _build_assistant_message(self, response: dict) -> dict[str, Any]:
+    def _build_assistant_message(self, response: dict[str, Any]) -> dict[str, Any]:
         """Build the assistant message to append to the conversation."""
-        msg: dict[str, Any] = {
+        message: dict[str, Any] = {
             "role": "assistant",
             "content": response.get("content", ""),
         }
         if "tool_calls" in response:
-            msg["tool_calls"] = response["tool_calls"]
-        return msg
+            message["tool_calls"] = response["tool_calls"]
+        return message
 
-    def _parse_tool_calls(self, response: dict) -> list[ToolCall]:
+    def _parse_tool_calls(self, response: dict[str, Any]) -> list[ToolCall]:
         """Extract tool calls from the LLM response."""
         raw_calls = response.get("tool_calls", [])
         calls = []
@@ -128,11 +131,13 @@ class SimpleAgent:
             hints = self.type_hints.get(name, {})
             arguments = self.coercion.apply(arguments, hints)
 
-            calls.append(ToolCall(
-                id=raw.get("id", ""),
-                name=name,
-                arguments=arguments,
-            ))
+            calls.append(
+                ToolCall(
+                    id=raw.get("id", ""),
+                    name=name,
+                    arguments=arguments,
+                )
+            )
         return calls
 
     async def _execute_tool(self, tool_call: ToolCall) -> ToolResult:

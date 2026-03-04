@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any
 
 from ganglion.orchestration.errors import PipelineOperationError
@@ -15,17 +15,17 @@ class StageDef:
     name: str
     agent: str
     retry: Any | None = None
-    optional: bool = False
+    is_optional: bool = False
     depends_on: list[str] = field(default_factory=list)
     input_keys: list[str] = field(default_factory=list)
     output_keys: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "agent": self.agent,
             "retry": str(self.retry) if self.retry else None,
-            "optional": self.optional,
+            "is_optional": self.is_optional,
             "depends_on": self.depends_on,
             "input_keys": self.input_keys,
             "output_keys": self.output_keys,
@@ -50,7 +50,7 @@ class PipelineDef:
         - All input_keys are produced by an upstream stage's output_keys
         """
         errors: list[str] = []
-        stage_names = [s.name for s in self.stages]
+        stage_names = [stage.name for stage in self.stages]
 
         # Check for duplicates
         seen: set[str] = set()
@@ -64,14 +64,11 @@ class PipelineDef:
         for stage in self.stages:
             for dep in stage.depends_on:
                 if dep not in name_set:
-                    errors.append(
-                        f"Stage '{stage.name}' depends on '{dep}' which does not exist"
-                    )
+                    errors.append(f"Stage '{stage.name}' depends on '{dep}' which does not exist")
 
         # Check for cycles (topological sort)
-        if not errors:
-            if self._has_cycle():
-                errors.append("Dependency graph contains a cycle")
+        if not errors and self._has_cycle():
+            errors.append("Dependency graph contains a cycle")
 
         # Check input_keys are produced by upstream output_keys
         if not errors:
@@ -94,20 +91,20 @@ class PipelineDef:
             name=self.name,
             stages=[
                 StageDef(
-                    name=s.name,
-                    agent=s.agent,
-                    retry=s.retry,
-                    optional=s.optional,
-                    depends_on=list(s.depends_on),
-                    input_keys=list(s.input_keys),
-                    output_keys=list(s.output_keys),
+                    name=stage.name,
+                    agent=stage.agent,
+                    retry=stage.retry,
+                    is_optional=stage.is_optional,
+                    depends_on=list(stage.depends_on),
+                    input_keys=list(stage.input_keys),
+                    output_keys=list(stage.output_keys),
                 )
-                for s in self.stages
+                for stage in self.stages
             ],
             default_retry=self.default_retry,
         )
 
-    def apply_operation(self, op: dict) -> PipelineDef:
+    def apply_operation(self, op: dict[str, Any]) -> PipelineDef:
         """Apply a single pipeline mutation. Returns new PipelineDef.
 
         Operations:
@@ -115,103 +112,101 @@ class PipelineDef:
         - {"op": "remove_stage", "stage_name": "..."}
         - {"op": "update_stage", "stage_name": "...", "updates": {...}}
         """
-        result = self.copy()
+        mutated = self.copy()
 
         if op["op"] == "add_stage":
             stage_dict = op["stage"]
             new_stage = StageDef(**stage_dict)
-            if any(s.name == new_stage.name for s in result.stages):
+            if any(stage.name == new_stage.name for stage in mutated.stages):
                 raise PipelineOperationError(f"Stage '{new_stage.name}' already exists")
-            result.stages.append(new_stage)
+            mutated.stages.append(new_stage)
 
         elif op["op"] == "remove_stage":
             name = op["stage_name"]
-            if not any(s.name == name for s in result.stages):
+            if not any(stage.name == name for stage in mutated.stages):
                 raise PipelineOperationError(f"Stage '{name}' not found")
-            result.stages = [s for s in result.stages if s.name != name]
+            mutated.stages = [stage for stage in mutated.stages if stage.name != name]
             # Clean up dependency references
-            for s in result.stages:
-                s.depends_on = [d for d in s.depends_on if d != name]
+            for stage in mutated.stages:
+                stage.depends_on = [dep for dep in stage.depends_on if dep != name]
 
         elif op["op"] == "update_stage":
             name = op["stage_name"]
             updates = op["updates"]
-            found = False
-            for s in result.stages:
-                if s.name == name:
-                    found = True
+            is_found = False
+            for stage in mutated.stages:
+                if stage.name == name:
+                    is_found = True
                     for key, value in updates.items():
-                        if not hasattr(s, key):
+                        if not hasattr(stage, key):
                             raise PipelineOperationError(f"StageDef has no field '{key}'")
-                        setattr(s, key, value)
+                        setattr(stage, key, value)
                     break
-            if not found:
+            if not is_found:
                 raise PipelineOperationError(f"Stage '{name}' not found")
 
         else:
             raise PipelineOperationError(f"Unknown operation: {op['op']}")
 
-        return result
+        return mutated
 
     def get_stage(self, name: str) -> StageDef | None:
         """Find a stage by name."""
-        return next((s for s in self.stages if s.name == name), None)
+        return next((stage for stage in self.stages if stage.name == name), None)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serializable representation."""
         return {
             "name": self.name,
-            "stages": [s.to_dict() for s in self.stages],
+            "stages": [stage.to_dict() for stage in self.stages],
             "default_retry": str(self.default_retry) if self.default_retry else None,
         }
 
     def _has_cycle(self) -> bool:
         """Detect cycles using DFS."""
-        adj: dict[str, list[str]] = {s.name: list(s.depends_on) for s in self.stages}
-        WHITE, GRAY, BLACK = 0, 1, 2
-        color: dict[str, int] = {name: WHITE for name in adj}
+        adjacency: dict[str, list[str]] = {
+            stage.name: list(stage.depends_on) for stage in self.stages
+        }
+        unvisited, in_progress, visited = 0, 1, 2
+        visit_state: dict[str, int] = {name: unvisited for name in adjacency}
 
         def dfs(node: str) -> bool:
-            color[node] = GRAY
-            for dep in adj.get(node, []):
-                if dep not in color:
+            visit_state[node] = in_progress
+            for dep in adjacency.get(node, []):
+                if dep not in visit_state:
                     continue
-                if color[dep] == GRAY:
+                if visit_state[dep] == in_progress:
                     return True
-                if color[dep] == WHITE and dfs(dep):
+                if visit_state[dep] == unvisited and dfs(dep):
                     return True
-            color[node] = BLACK
+            visit_state[node] = visited
             return False
 
-        for node in adj:
-            if color[node] == WHITE:
-                if dfs(node):
-                    return True
-        return False
+        return any(visit_state[node] == unvisited and dfs(node) for node in adjacency)
 
     def _topological_order(self) -> list[StageDef]:
         """Return stages in topological (dependency) order."""
-        name_to_stage = {s.name: s for s in self.stages}
-        in_degree: dict[str, int] = {s.name: 0 for s in self.stages}
-        dependents: dict[str, list[str]] = {s.name: [] for s in self.stages}
+        name_to_stage = {stage.name: stage for stage in self.stages}
+        in_degree: dict[str, int] = {stage.name: 0 for stage in self.stages}
+        dependents: dict[str, list[str]] = {stage.name: [] for stage in self.stages}
 
-        for s in self.stages:
-            for dep in s.depends_on:
+        for stage in self.stages:
+            for dep in stage.depends_on:
                 if dep in dependents:
-                    dependents[dep].append(s.name)
-                    in_degree[s.name] += 1
+                    dependents[dep].append(stage.name)
+                    in_degree[stage.name] += 1
 
-        queue = [name for name, deg in in_degree.items() if deg == 0]
-        result: list[StageDef] = []
+        queue = [name for name, degree in in_degree.items() if degree == 0]
+        ordered: list[StageDef] = []
 
         while queue:
             # Sort for deterministic ordering
             queue.sort()
             name = queue.pop(0)
-            result.append(name_to_stage[name])
+            ordered.append(name_to_stage[name])
             for dependent in dependents[name]:
                 in_degree[dependent] -= 1
                 if in_degree[dependent] == 0:
                     queue.append(dependent)
 
-        return result
+        return ordered

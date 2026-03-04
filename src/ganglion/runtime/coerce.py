@@ -20,7 +20,7 @@ def coerce_json_strings(
     stripped = value.strip()
     if not stripped:
         return value, False
-    if stripped[0] in ('{', '[', '"') or stripped in ('true', 'false', 'null'):
+    if stripped[0] in ("{", "[", '"') or stripped in ("true", "false", "null"):
         try:
             parsed = json.loads(stripped)
             logger.debug("Coerced JSON string for arg '%s': %r -> %r", arg_name, value, parsed)
@@ -80,7 +80,7 @@ def coerce_string_numbers(
 class CoercionPipeline:
     """Runs a sequence of coercion functions over tool-call arguments."""
 
-    def __init__(self, coercions: list | None = None):
+    def __init__(self, coercions: list[Any] | None = None):
         self.coercions = coercions or [
             coerce_json_strings,
             coerce_empty_to_list,
@@ -99,8 +99,8 @@ class CoercionPipeline:
             expected = type_hints.get(arg_name)
             current = value
             for coerce_fn in self.coercions:
-                current, modified = coerce_fn(arg_name, current, expected)
-                if modified:
+                current, is_modified = coerce_fn(arg_name, current, expected)
+                if is_modified:
                     logger.info(
                         "Coercion '%s' modified arg '%s': %r -> %r",
                         coerce_fn.__name__,

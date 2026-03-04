@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 class ValidationResult:
     """Result of validating code."""
 
-    passed: bool
+    is_passed: bool
     errors: list[str] = field(default_factory=list)
 
 
@@ -34,7 +34,7 @@ class MutationValidator:
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
-            return ValidationResult(passed=False, errors=[f"Syntax error: {e}"])
+            return ValidationResult(is_passed=False, errors=[f"Syntax error: {e}"])
 
         has_tool_decorator = False
         for node in ast.walk(tree):
@@ -53,9 +53,7 @@ class MutationValidator:
                         has_tool_decorator = True
                         for arg in node.args.args:
                             if arg.annotation is None and arg.arg != "self":
-                                errors.append(
-                                    f"Parameter '{arg.arg}' missing type hint"
-                                )
+                                errors.append(f"Parameter '{arg.arg}' missing type hint")
 
                 if not ast.get_docstring(node):
                     errors.append(f"Function '{node.name}' missing docstring")
@@ -65,7 +63,7 @@ class MutationValidator:
 
         errors.extend(self._check_blocked_imports(tree))
 
-        return ValidationResult(passed=len(errors) == 0, errors=errors)
+        return ValidationResult(is_passed=len(errors) == 0, errors=errors)
 
     def validate_agent(self, code: str) -> ValidationResult:
         """Checks: valid syntax, class inheriting BaseAgentWrapper,
@@ -75,14 +73,12 @@ class MutationValidator:
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
-            return ValidationResult(passed=False, errors=[f"Syntax error: {e}"])
+            return ValidationResult(is_passed=False, errors=[f"Syntax error: {e}"])
 
         has_agent_class = False
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
-                base_names = [
-                    getattr(b, "id", getattr(b, "attr", "")) for b in node.bases
-                ]
+                base_names = [getattr(b, "id", getattr(b, "attr", "")) for b in node.bases]
                 if "BaseAgentWrapper" in base_names:
                     has_agent_class = True
                     methods = {
@@ -100,14 +96,14 @@ class MutationValidator:
 
         errors.extend(self._check_blocked_imports(tree))
 
-        return ValidationResult(passed=len(errors) == 0, errors=errors)
+        return ValidationResult(is_passed=len(errors) == 0, errors=errors)
 
     def validate_pipeline(self, pipeline_def: object) -> ValidationResult:
         """Validate a PipelineDef instance."""
         if hasattr(pipeline_def, "validate"):
-            errors = pipeline_def.validate()  # type: ignore[union-attr]
-            return ValidationResult(passed=len(errors) == 0, errors=errors)
-        return ValidationResult(passed=False, errors=["Not a valid PipelineDef"])
+            errors = pipeline_def.validate()
+            return ValidationResult(is_passed=len(errors) == 0, errors=errors)
+        return ValidationResult(is_passed=False, errors=["Not a valid PipelineDef"])
 
     def _check_blocked_imports(self, tree: ast.AST) -> list[str]:
         """Check for blocked imports in an AST."""
@@ -122,9 +118,7 @@ class MutationValidator:
                 for alias in node.names:
                     full_name = f"{module}.{alias.name}" if module else alias.name
                     for blocked in self.blocked_imports:
-                        if full_name.startswith(blocked) or module.startswith(
-                            blocked
-                        ):
+                        if full_name.startswith(blocked) or module.startswith(blocked):
                             errors.append(f"Blocked import: {full_name}")
                             break
         return errors

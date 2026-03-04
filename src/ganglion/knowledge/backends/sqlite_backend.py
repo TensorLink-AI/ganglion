@@ -6,6 +6,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
 
@@ -61,6 +62,10 @@ class SqliteKnowledgeBackend:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_antipatterns_source_bot ON antipatterns(source_bot)"
             )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_patterns_timestamp ON patterns(timestamp)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_antipatterns_timestamp ON antipatterns(timestamp)"
+            )
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(str(self.db_path))
@@ -69,7 +74,8 @@ class SqliteKnowledgeBackend:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO patterns
-                   (capability, description, config, metric_value, metric_name, stage, timestamp, run_id, source_bot)
+                   (capability, description, config, metric_value,
+                    metric_name, stage, timestamp, run_id, source_bot)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     pattern.capability,
@@ -88,7 +94,8 @@ class SqliteKnowledgeBackend:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO antipatterns
-                   (capability, error_summary, config, failure_mode, stage, timestamp, run_id, source_bot)
+                   (capability, error_summary, config, failure_mode,
+                    stage, timestamp, run_id, source_bot)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     antipattern.capability,
@@ -104,7 +111,7 @@ class SqliteKnowledgeBackend:
 
     async def query_patterns(self, query: KnowledgeQuery) -> list[Pattern]:
         conditions = []
-        params: list = []
+        params: list[Any] = []
 
         if query.capability:
             conditions.append("capability = ?")
@@ -131,7 +138,7 @@ class SqliteKnowledgeBackend:
 
     async def query_antipatterns(self, query: KnowledgeQuery) -> list[Antipattern]:
         conditions = []
-        params: list = []
+        params: list[Any] = []
 
         if query.capability:
             conditions.append("capability = ?")
@@ -180,6 +187,7 @@ class SqliteKnowledgeBackend:
     def _row_to_pattern(self, row: sqlite3.Row) -> Pattern:
         config = json.loads(row["config"]) if row["config"] else None
         from datetime import datetime
+
         return Pattern(
             capability=row["capability"],
             description=row["description"],
@@ -195,6 +203,7 @@ class SqliteKnowledgeBackend:
     def _row_to_antipattern(self, row: sqlite3.Row) -> Antipattern:
         config = json.loads(row["config"]) if row["config"] else None
         from datetime import datetime
+
         return Antipattern(
             capability=row["capability"],
             error_summary=row["error_summary"],

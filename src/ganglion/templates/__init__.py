@@ -47,7 +47,8 @@ class SubnetTemplate:
             meta = tdef.get("metadata", {})
             meta_str = repr(meta) if meta else "{}"
             tasks_lines.append(
-                f'    "{tname}": TaskDef(name="{tname}", weight={tdef.get("weight", 1.0)}, metadata={meta_str}),'
+                f'    "{tname}": TaskDef(name="{tname}",'
+                f" weight={tdef.get('weight', 1.0)}, metadata={meta_str}),"
             )
 
         constraints_str = repr(self.constraints) if self.constraints else "{}"
@@ -135,6 +136,21 @@ If you cannot make progress, call finish(success=false, summary="...").
         """Return the tool code (already complete)."""
         return code
 
+    def _render_constraints(self) -> str:
+        """Render constraints as markdown list."""
+        if not self.constraints:
+            return "None specified."
+        return "\n".join(f"- **{k}**: {v}" for k, v in self.constraints.items())
+
+    def _render_metrics_list(self) -> str:
+        """Render metrics as markdown list."""
+        lines = []
+        for m in self.metrics:
+            weight = m.get("weight", 1.0)
+            desc = m.get("description", "")
+            lines.append(f"- **{m['name']}** ({m['direction']}, weight={weight}): {desc}")
+        return "\n".join(lines)
+
     def render_skill_md(self) -> str:
         """Render a subnet-specific SKILL.md for Claw Hub."""
         strategies_section = ""
@@ -147,9 +163,14 @@ If you cannot make progress, call finish(success=false, summary="...").
             items = "\n".join(f"- {p}" for p in self.known_pitfalls)
             pitfalls_section = f"\n## Known pitfalls\n\n{items}\n"
 
-        return f'''---
+        desc = (
+            f"Domain knowledge and bootstrap strategies"
+            f" for mining {self.name} (netuid {self.netuid})"
+            f" with Ganglion."
+        )
+        return f"""---
 name: ganglion-{self.slug}
-description: Domain knowledge and bootstrap strategies for mining {self.name} (netuid {self.netuid}) with Ganglion.
+description: {desc}
 homepage: https://github.com/TensorLink-AI/ganglion
 metadata: {{"openclaw":{{"emoji":"\\u26d3","requires":{{"anyBins":["ganglion","curl"]}}}}}}
 ---
@@ -160,13 +181,14 @@ metadata: {{"openclaw":{{"emoji":"\\u26d3","requires":{{"anyBins":["ganglion","c
 
 This skill provides domain knowledge. Use the `ganglion` skill for API commands.
 When `GANGLION_PROJECT` is set (or `GANGLION_URL` is not set), use local CLI commands.
-When `GANGLION_URL` is set, use curl against the HTTP bridge.
+When `GANGLION_URL` is set, use curl against the HTTP bridge (all endpoints are under `/v1/`).
+Responses use a standard envelope: `{{"data": <payload>}}` on success.
 
 ## Metrics
 
 The validator scores miners on:
 
-{chr(10).join(f"- **{m['name']}** ({m['direction']}, weight={m.get('weight', 1.0)}): {m.get('description', '')}" for m in self.metrics)}
+{self._render_metrics_list()}
 
 ## Output format
 
@@ -187,12 +209,13 @@ Remote mode (separate server):
 
 1. `ganglion serve ./{self.slug} --bot-id {{{{bot_id}}}} --port 8899`
 2. `export GANGLION_URL=http://127.0.0.1:8899`
-3. Use curl commands from the `ganglion` skill
+3. Verify readiness: `curl -s "$GANGLION_URL/readyz" | jq`
+4. Use `/v1/` curl commands from the `ganglion` skill
 
 ## Constraints
 
-{chr(10).join(f"- **{k}**: {v}" for k, v in self.constraints.items()) if self.constraints else "None specified."}
-'''
+{self._render_constraints()}
+"""
 
     def scaffold(self, target: Path) -> list[str]:
         """Write all files to the target directory. Returns list of created paths."""
@@ -257,7 +280,12 @@ GENERIC_TEMPLATE = SubnetTemplate(
     name="My Subnet",
     slug="my-subnet",
     metrics=[
-        {"name": "score", "direction": "maximize", "weight": 1.0, "description": "Primary scoring metric"},
+        {
+            "name": "score",
+            "direction": "maximize",
+            "weight": 1.0,
+            "description": "Primary scoring metric",
+        },
     ],
     tasks={
         "default": {"weight": 1.0},
@@ -290,6 +318,7 @@ def get_template(subnet: str) -> SubnetTemplate:
 
     # Return generic with the subnet name filled in
     from dataclasses import replace
+
     return replace(
         GENERIC_TEMPLATE,
         name=subnet,
