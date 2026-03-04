@@ -1,6 +1,8 @@
 """Tests for the LLM client with retry logic."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from ganglion.runtime.llm_client import LLMClient
 
@@ -80,3 +82,141 @@ class TestLLMClient:
         assert "tool_calls" in result
         assert len(result["tool_calls"]) == 1
         assert result["tool_calls"][0]["function"]["name"] == "my_tool"
+
+    @pytest.mark.asyncio
+    async def test_chat_completion_success(self):
+        """Test successful chat completion call."""
+        client = LLMClient(api_key="test-key", model="gpt-4o")
+
+        mock_message = MagicMock()
+        mock_message.content = "response text"
+        mock_message.tool_calls = None
+
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = MagicMock(prompt_tokens=5, completion_tokens=3)
+
+        client.client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = await client.chat_completion(
+            messages=[{"role": "user", "content": "hello"}],
+        )
+        assert result["content"] == "response text"
+        assert result["finish_reason"] == "stop"
+
+    @pytest.mark.asyncio
+    async def test_chat_completion_with_tools(self):
+        """Test chat completion with tools parameter."""
+        client = LLMClient(api_key="test-key")
+
+        mock_message = MagicMock()
+        mock_message.content = ""
+        mock_message.tool_calls = None
+
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = MagicMock(prompt_tokens=5, completion_tokens=3)
+
+        client.client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = await client.chat_completion(
+            messages=[{"role": "user", "content": "hello"}],
+            tools=[{"type": "function", "function": {"name": "test"}}],
+            temperature=0.5,
+        )
+        assert result["role"] == "assistant"
+        # Verify tools were passed
+        call_kwargs = client.client.chat.completions.create.call_args[1]
+        assert "tools" in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_chat_completion_with_model_override(self):
+        """Test chat completion with model override."""
+        client = LLMClient(api_key="test-key", model="gpt-4o")
+
+        mock_message = MagicMock()
+        mock_message.content = "ok"
+        mock_message.tool_calls = None
+
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
+
+        client.client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        await client.chat_completion(
+            messages=[{"role": "user", "content": "hi"}],
+            model="gpt-3.5-turbo",
+        )
+        call_kwargs = client.client.chat.completions.create.call_args[1]
+        assert call_kwargs["model"] == "gpt-3.5-turbo"
+
+    @pytest.mark.asyncio
+    async def test_chat_completion_retry_on_rate_limit(self):
+        """Test that RateLimitError triggers retry."""
+        from openai import RateLimitError
+
+        client = LLMClient(
+            api_key="test-key",
+            max_retries=1,
+            base_delay=0.01,
+        )
+
+        mock_message = MagicMock()
+        mock_message.content = "ok"
+        mock_message.tool_calls = None
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
+
+        mock_rate_error = MagicMock(spec=RateLimitError)
+        mock_rate_error.__class__ = RateLimitError
+
+        # First call raises, second succeeds
+        client.client.chat.completions.create = AsyncMock(
+            side_effect=[
+                RateLimitError("rate limited", response=MagicMock(), body=None),
+                mock_response,
+            ]
+        )
+
+        result = await client.chat_completion(
+            messages=[{"role": "user", "content": "hi"}],
+        )
+        assert result["content"] == "ok"
+        assert client.client.chat.completions.create.call_count == 2
+
+    def test_parse_response_no_usage(self):
+        """Test parsing response when usage is None."""
+        client = LLMClient(api_key="test-key")
+
+        mock_message = MagicMock()
+        mock_message.content = "Hello"
+        mock_message.tool_calls = None
+
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_choice.finish_reason = "stop"
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = None
+
+        result = client._parse_response(mock_response)
+        assert result["usage"]["prompt_tokens"] == 0
+        assert result["usage"]["completion_tokens"] == 0

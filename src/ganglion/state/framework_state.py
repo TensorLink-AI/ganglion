@@ -47,6 +47,7 @@ class FrameworkState:
         project_root: Path | None = None,
         knowledge: KnowledgeStore | None = None,
         validator: MutationValidator | None = None,
+        mcp_configs: list[Any] | None = None,
     ):
         self.subnet_config = subnet_config
         self.pipeline_def = pipeline_def
@@ -56,6 +57,10 @@ class FrameworkState:
         self.project_root = project_root or Path(".")
         self.knowledge = knowledge
         self.validator = validator or MutationValidator()
+
+        # MCP client bridges (name -> bridge)
+        self._mcp_configs: list[Any] = mcp_configs or []
+        self._mcp_bridges: dict[str, Any] = {}
 
         # Concurrency control
         self._run_lock = asyncio.Lock()
@@ -130,6 +135,7 @@ class FrameworkState:
 
         persistence = getattr(config_module, "persistence", None)
         knowledge = getattr(config_module, "knowledge", None)
+        mcp_clients = getattr(config_module, "mcp_clients", None)
 
         # Set bot_id on knowledge store for multi-bot shared knowledge
         if knowledge is not None and bot_id is not None:
@@ -177,6 +183,7 @@ class FrameworkState:
             persistence=persistence,
             project_root=project_root,
             knowledge=knowledge,
+            mcp_configs=mcp_clients,
         )
 
     # ── Observation methods ─────────────────────────────────
@@ -189,8 +196,25 @@ class FrameworkState:
             "tools": self.tool_registry.list_all(),
             "agents": self.agent_registry.list_all(),
             "knowledge": (await self.knowledge.summary()) if self.knowledge else None,
+            "mcp": self._describe_mcp(),
             "mutations": len(self.mutations),
             "running": self._is_running,
+        }
+
+    def _describe_mcp(self) -> dict[str, Any]:
+        """MCP connection status snapshot."""
+        servers = []
+        for name, bridge in self._mcp_bridges.items():
+            servers.append(
+                {
+                    "name": name,
+                    "connected": bridge.session is not None,
+                    "tools": len(bridge.get_tools()),
+                }
+            )
+        return {
+            "connected_servers": servers,
+            "total_tools": sum(len(b.get_tools()) for b in self._mcp_bridges.values()),
         }
 
     # ── Mutation methods (all go through validation + audit) ─
@@ -406,6 +430,125 @@ class FrameworkState:
 
             return MutationResult(success=True, path=str(path))
 
+    # ── MCP methods ─────────────────────────────────────────
+
+    async def initialize_mcp(self) -> None:
+        """Connect to all statically-configured MCP servers from config.py."""
+        for config in self._mcp_configs:
+            try:
+                await self._connect_mcp_bridge(config)
+            except Exception as e:
+                logger.error("Failed to connect MCP server '%s': %s", config.name, e)
+
+    async def shutdown_mcp(self) -> None:
+        """Disconnect from all MCP servers."""
+        for name in list(self._mcp_bridges):
+            try:
+                await self._disconnect_mcp_bridge(name)
+            except Exception as e:
+                logger.warning("Error disconnecting MCP server '%s': %s", name, e)
+
+    async def connect_mcp_server(self, config: Any) -> MutationResult:
+        """Dynamically connect to a new MCP server and register its tools."""
+        async with self._mutation_lock:
+            self._check_not_running("Cannot add MCP connections during a pipeline run")
+
+            if config.name in self._mcp_bridges:
+                return MutationResult(
+                    success=False,
+                    errors=[f"MCP server '{config.name}' already connected"],
+                )
+
+            errors = config.validate()
+            if errors:
+                return MutationResult(success=False, errors=errors)
+
+            try:
+                tool_names = await self._connect_mcp_bridge(config)
+            except Exception as e:
+                return MutationResult(success=False, errors=[f"Connection failed: {e}"])
+
+            self.mutations.append(
+                Mutation(
+                    mutation_type="connect_mcp",
+                    target=config.name,
+                    description=(
+                        f"Connected MCP server '{config.name}', registered {len(tool_names)} tools"
+                    ),
+                    rollback_data={"config": config.to_dict(), "tools": tool_names},
+                )
+            )
+
+            return MutationResult(success=True)
+
+    async def disconnect_mcp_server(self, name: str) -> MutationResult:
+        """Disconnect from an MCP server and unregister its tools."""
+        async with self._mutation_lock:
+            self._check_not_running("Cannot remove MCP connections during a pipeline run")
+
+            if name not in self._mcp_bridges:
+                return MutationResult(success=False, errors=[f"MCP server '{name}' not connected"])
+
+            bridge = self._mcp_bridges[name]
+            tool_names = list(bridge.get_tools().keys())
+
+            try:
+                await self._disconnect_mcp_bridge(name)
+            except Exception as e:
+                return MutationResult(success=False, errors=[f"Disconnect failed: {e}"])
+
+            self.mutations.append(
+                Mutation(
+                    mutation_type="disconnect_mcp",
+                    target=name,
+                    description=(
+                        f"Disconnected MCP server '{name}', unregistered {len(tool_names)} tools"
+                    ),
+                    rollback_data={"tools": tool_names},
+                )
+            )
+
+            return MutationResult(success=True)
+
+    async def _connect_mcp_bridge(self, config: Any) -> list[str]:
+        """Connect to a single MCP server and register its tools."""
+        from ganglion.mcp.client import MCPClientBridge
+
+        bridge = MCPClientBridge(config)
+        tool_defs = await bridge.connect()
+
+        tool_names = []
+        for td in tool_defs:
+            if not self.tool_registry.has(td.name):
+                self.tool_registry.register(
+                    name=td.name,
+                    func=td.func,
+                    description=td.description,
+                    parameters_schema=td.parameters_schema,
+                    category=td.category,
+                )
+                tool_names.append(td.name)
+
+        self._mcp_bridges[config.name] = bridge
+        logger.info(
+            "MCP server '%s': connected, registered %d tools",
+            config.name,
+            len(tool_names),
+        )
+        return tool_names
+
+    async def _disconnect_mcp_bridge(self, name: str) -> None:
+        """Disconnect from a single MCP server and unregister its tools."""
+        bridge = self._mcp_bridges.pop(name, None)
+        if bridge is None:
+            return
+
+        for tool_name in bridge.get_tools():
+            if self.tool_registry.has(tool_name):
+                self.tool_registry.unregister(tool_name)
+
+        await bridge.disconnect()
+
     # ── Execution methods ───────────────────────────────────
 
     async def run_pipeline(self, overrides: dict[str, Any] | None = None) -> PipelineResult:
@@ -545,6 +688,15 @@ class FrameworkState:
                         for s in previous["stages"]
                     ],
                 )
+
+            elif mutation.mutation_type in ("connect_mcp", "disconnect_mcp"):
+                # MCP rollbacks: connect_mcp -> disconnect, disconnect_mcp -> no-op
+                # (reconnecting would require the original config which may not be available)
+                if mutation.mutation_type == "connect_mcp":
+                    name = mutation.target
+                    if name in self._mcp_bridges:
+                        await self._disconnect_mcp_bridge(name)
+                # disconnect_mcp rollback is a no-op — we can't reconnect without config
 
             elif mutation.mutation_type == "swap_policy":
                 stage_name = mutation.rollback_data.get("stage")

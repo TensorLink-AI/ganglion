@@ -221,3 +221,315 @@ class TestInputValidation:
             },
         )
         assert response.status_code == 422
+
+
+class TestWriteAgentEndpoint:
+    def test_write_agent_success(self, client):
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.path = "/agents/test_agent.py"
+
+        async def mock_write(*args, **kwargs):
+            return mock_result
+
+        srv._state.write_and_register_agent = mock_write
+        response = client.post(
+            "/v1/agents",
+            json={"name": "TestAgent", "code": "class TestAgent: pass"},
+        )
+        assert response.status_code == 201
+
+    def test_write_agent_validation_error(self, client):
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.errors = ["Missing BaseAgentWrapper subclass"]
+
+        async def mock_write(*args, **kwargs):
+            return mock_result
+
+        srv._state.write_and_register_agent = mock_write
+        response = client.post(
+            "/v1/agents",
+            json={"name": "BadAgent", "code": "def bad(): pass"},
+        )
+        assert response.status_code == 400
+
+
+class TestWriteComponentEndpoint:
+    def test_write_component_fallback(self, client):
+        """Test write_component when no training_framework is set."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            srv._state.project_root = Path(tmp)
+            response = client.post(
+                "/v1/components",
+                json={
+                    "name": "test_backbone",
+                    "code": "class Backbone: pass",
+                    "component_type": "backbone",
+                },
+            )
+            assert response.status_code == 201
+            data = response.json()["data"]
+            assert "path" in data
+
+
+class TestWritePromptEndpoint:
+    def test_write_prompt_success(self, client):
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.path = "/prompts/agent.py"
+
+        async def mock_update(*args, **kwargs):
+            return mock_result
+
+        srv._state.update_prompt = mock_update
+        response = client.post(
+            "/v1/prompts",
+            json={
+                "agent_name": "trainer",
+                "prompt_section": "role",
+                "content": "You are a trainer agent.",
+            },
+        )
+        assert response.status_code == 200
+
+
+class TestPatchPipelineEndpoint:
+    def test_patch_pipeline_success(self, client):
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.pipeline = {"name": "test", "stages": []}
+
+        async def mock_patch(*args, **kwargs):
+            return mock_result
+
+        srv._state.apply_pipeline_patch = mock_patch
+        response = client.patch(
+            "/v1/pipeline",
+            json={"operations": [{"op": "add_stage", "stage": {"name": "s", "agent": "A"}}]},
+        )
+        assert response.status_code == 200
+
+    def test_patch_pipeline_error(self, client):
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.errors = ["Invalid operation"]
+
+        async def mock_patch(*args, **kwargs):
+            return mock_result
+
+        srv._state.apply_pipeline_patch = mock_patch
+        response = client.patch(
+            "/v1/pipeline",
+            json={"operations": [{"op": "bad_op"}]},
+        )
+        assert response.status_code == 400
+
+
+class TestSwapPolicyEndpoint:
+    def test_swap_policy_success(self, client):
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        async def mock_swap(*args, **kwargs):
+            return mock_result
+
+        srv._state.swap_policy = mock_swap
+        response = client.put(
+            "/v1/policies/train",
+            json={"retry_policy": {"type": "fixed", "max_attempts": 3}},
+        )
+        assert response.status_code == 200
+
+    def test_swap_default_policy(self, client):
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        async def mock_swap(*args, **kwargs):
+            return mock_result
+
+        srv._state.swap_policy = mock_swap
+        response = client.put(
+            "/v1/policies/default",
+            json={"retry_policy": {"type": "none"}},
+        )
+        assert response.status_code == 200
+
+    def test_swap_policy_error(self, client):
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.errors = ["Stage 'missing' not found"]
+
+        async def mock_swap(*args, **kwargs):
+            return mock_result
+
+        srv._state.swap_policy = mock_swap
+        response = client.put(
+            "/v1/policies/missing",
+            json={"retry_policy": {"type": "fixed", "max_attempts": 3}},
+        )
+        assert response.status_code == 400
+
+
+class TestRollbackEndpoints:
+    def test_rollback_last_success(self, client):
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        async def mock_rollback():
+            return mock_result
+
+        srv._state.rollback_last = mock_rollback
+        response = client.post("/v1/rollback/last")
+        assert response.status_code == 200
+
+    def test_rollback_last_error(self, client):
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.errors = ["No mutations to rollback"]
+
+        async def mock_rollback():
+            return mock_result
+
+        srv._state.rollback_last = mock_rollback
+        response = client.post("/v1/rollback/last")
+        assert response.status_code == 400
+
+    def test_rollback_to_success(self, client):
+        mock_result = MagicMock()
+        mock_result.success = True
+
+        async def mock_rollback(index):
+            return mock_result
+
+        srv._state.rollback_to = mock_rollback
+        response = client.post("/v1/rollback/2")
+        assert response.status_code == 200
+
+    def test_rollback_to_negative_index(self, client):
+        response = client.post("/v1/rollback/-1")
+        assert response.status_code == 400
+
+
+class TestRunEndpoints:
+    def test_run_pipeline_success(self, client):
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {"success": True, "results": {}}
+
+        async def mock_run(**kwargs):
+            return mock_result
+
+        srv._state.run_pipeline = mock_run
+        response = client.post("/v1/run/pipeline")
+        assert response.status_code == 200
+        assert response.json()["data"]["success"] is True
+
+    def test_run_pipeline_with_overrides(self, client):
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {"success": True, "results": {}}
+
+        async def mock_run(**kwargs):
+            return mock_result
+
+        srv._state.run_pipeline = mock_run
+        response = client.post(
+            "/v1/run/pipeline",
+            json={"overrides": {"key": "value"}},
+        )
+        assert response.status_code == 200
+
+    def test_run_stage_success(self, client):
+        mock_result = MagicMock()
+        mock_result.to_dict.return_value = {"success": True, "attempts": 1}
+
+        async def mock_run(stage_name, context=None):
+            return mock_result
+
+        srv._state.run_single_stage = mock_run
+        response = client.post("/v1/run/stage/train")
+        assert response.status_code == 200
+
+    def test_run_experiment_success(self, client):
+        async def mock_run(config):
+            return {"success": True, "content": "done"}
+
+        srv._state.run_direct_experiment = mock_run
+        response = client.post(
+            "/v1/run/experiment",
+            json={"config": {"param": "value"}},
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["success"] is True
+
+
+class TestMCPEndpoints:
+    def test_get_mcp_status(self, client):
+        srv._state._describe_mcp = MagicMock(
+            return_value={"connected_servers": [], "total_tools": 0}
+        )
+        response = client.get("/v1/mcp")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["connected_servers"] == []
+
+    def test_disconnect_mcp_server_not_found(self, client):
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.errors = ["MCP server 'x' not connected"]
+
+        async def mock_disconnect(name):
+            return mock_result
+
+        srv._state.disconnect_mcp_server = mock_disconnect
+        response = client.delete("/v1/mcp/servers/x")
+        assert response.status_code == 400
+
+
+class TestRunHistoryAndMetrics:
+    def test_get_run_history_no_persistence(self, client):
+        response = client.get("/v1/runs")
+        assert response.status_code == 200
+        assert response.json()["data"] == []
+
+    def test_get_metrics_no_persistence(self, client):
+        response = client.get("/v1/metrics")
+        assert response.status_code == 200
+        assert response.json()["data"] == []
+
+    def test_get_leaderboard_no_client(self, client):
+        response = client.get("/v1/leaderboard")
+        assert response.status_code == 200
+        assert response.json()["data"] == []
+
+    def test_get_run_history_invalid_n(self, client):
+        response = client.get("/v1/runs?n=0")
+        assert response.status_code == 400
+
+
+class TestBackwardCompatibilityExtended:
+    def test_unversioned_agents(self, client):
+        response = client.get("/agents")
+        assert response.status_code == 200
+
+    def test_unversioned_knowledge(self, client):
+        response = client.get("/knowledge")
+        assert response.status_code == 200
+
+
+class TestNotConfigured:
+    def test_readiness_not_configured(self):
+        srv._state = None
+        srv._config = None
+        unconfigured_client = TestClient(app)
+        response = unconfigured_client.get("/readyz")
+        assert response.status_code == 503
+
+    def test_status_not_configured(self):
+        srv._state = None
+        srv._config = None
+        unconfigured_client = TestClient(app)
+        response = unconfigured_client.get("/v1/status")
+        assert response.status_code == 503
