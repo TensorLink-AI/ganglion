@@ -114,7 +114,7 @@ pipeline = PipelineDef(
             agent="Forecaster",
             depends_on=["plan"],
             input_keys=["plan", "target_asset"],
-            output_keys=["volatility_params"],
+            output_keys=["volatility_params", "historical_prices"],
             retry=SN50_PRESET["default_retry"],
         ),
         StageDef(
@@ -126,11 +126,19 @@ pipeline = PipelineDef(
             retry=SN50_PRESET["default_retry"],
         ),
         StageDef(
+            name="backtest",
+            agent="Forecaster",
+            depends_on=["simulate", "calibrate"],
+            input_keys=["price_paths", "historical_prices", "target_asset"],
+            output_keys=["crps_breakdown", "crps_weighted"],
+            retry=SN50_PRESET["default_retry"],
+        ),
+        StageDef(
             name="evaluate",
             agent="Forecaster",
-            depends_on=["simulate"],
-            input_keys=["price_paths", "metrics"],
-            output_keys=["crps_estimate", "summary"],
+            depends_on=["backtest"],
+            input_keys=["crps_breakdown", "crps_weighted", "metrics"],
+            output_keys=["summary"],
         ),
     ],
 )
