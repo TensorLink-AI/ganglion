@@ -160,7 +160,8 @@ metadata: {{"openclaw":{{"emoji":"\\u26d3","requires":{{"anyBins":["ganglion","c
 
 This skill provides domain knowledge. Use the `ganglion` skill for API commands.
 When `GANGLION_PROJECT` is set (or `GANGLION_URL` is not set), use local CLI commands.
-When `GANGLION_URL` is set, use curl against the HTTP bridge.
+When `GANGLION_URL` is set, use curl against the HTTP bridge (all endpoints are under `/v1/`).
+Responses use a standard envelope: `{{"data": <payload>}}` on success.
 
 ## Metrics
 
@@ -187,7 +188,8 @@ Remote mode (separate server):
 
 1. `ganglion serve ./{self.slug} --bot-id {{{{bot_id}}}} --port 8899`
 2. `export GANGLION_URL=http://127.0.0.1:8899`
-3. Use curl commands from the `ganglion` skill
+3. Verify readiness: `curl -s "$GANGLION_URL/readyz" | jq`
+4. Use `/v1/` curl commands from the `ganglion` skill
 
 ## Constraints
 

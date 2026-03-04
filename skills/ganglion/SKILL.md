@@ -26,6 +26,15 @@ else
 fi
 ```
 
+## Response format
+
+All remote (HTTP bridge) responses use a standard envelope:
+
+- **Success**: `{"data": <payload>}`
+- **Error**: `{"error": {"code": "ERROR_CODE", "message": "Human-readable message"}}`
+
+Use `jq .data` to extract the payload from successful responses.
+
 ## Setup
 
 **Local mode** — set the project path, no server required:
@@ -41,6 +50,16 @@ ganglion serve ./my-subnet --bot-id <your-bot-id> --port 8899
 export GANGLION_URL=http://127.0.0.1:8899
 ```
 
+## Health checks (remote only)
+
+```
+# Liveness — is the process alive?
+curl -s "$GANGLION_URL/healthz" | jq
+
+# Readiness — is the bridge configured and ready?
+curl -s "$GANGLION_URL/readyz" | jq
+```
+
 ## Observe
 
 ### Status
@@ -50,7 +69,7 @@ export GANGLION_URL=http://127.0.0.1:8899
 ganglion status $GANGLION_PROJECT
 
 # remote
-curl -s "$GANGLION_URL/status" | jq
+curl -s "$GANGLION_URL/v1/status" | jq .data
 ```
 
 ### Pipeline
@@ -60,7 +79,7 @@ curl -s "$GANGLION_URL/status" | jq
 ganglion pipeline $GANGLION_PROJECT
 
 # remote
-curl -s "$GANGLION_URL/pipeline" | jq
+curl -s "$GANGLION_URL/v1/pipeline" | jq .data
 ```
 
 ### Tools
@@ -71,8 +90,8 @@ ganglion tools $GANGLION_PROJECT
 ganglion tools $GANGLION_PROJECT --category training
 
 # remote
-curl -s "$GANGLION_URL/tools" | jq
-curl -s "$GANGLION_URL/tools?category=training" | jq
+curl -s "$GANGLION_URL/v1/tools" | jq .data
+curl -s "$GANGLION_URL/v1/tools?category=training" | jq .data
 ```
 
 ### Agents
@@ -82,7 +101,7 @@ curl -s "$GANGLION_URL/tools?category=training" | jq
 ganglion agents $GANGLION_PROJECT
 
 # remote
-curl -s "$GANGLION_URL/agents" | jq
+curl -s "$GANGLION_URL/v1/agents" | jq .data
 ```
 
 ### Knowledge
@@ -93,22 +112,29 @@ ganglion knowledge $GANGLION_PROJECT
 ganglion knowledge $GANGLION_PROJECT --capability training --max-entries 10
 
 # remote
-curl -s "$GANGLION_URL/knowledge" | jq
-curl -s "$GANGLION_URL/knowledge?capability=training&max_entries=10" | jq
+curl -s "$GANGLION_URL/v1/knowledge" | jq .data
+curl -s "$GANGLION_URL/v1/knowledge?capability=training&max_entries=10" | jq .data
 ```
 
 ### Runs and metrics (remote only)
 
 ```
-curl -s "$GANGLION_URL/runs?n=5" | jq
-curl -s "$GANGLION_URL/metrics" | jq
-curl -s "$GANGLION_URL/leaderboard" | jq
+curl -s "$GANGLION_URL/v1/runs?n=5" | jq .data
+curl -s "$GANGLION_URL/v1/metrics" | jq .data
+curl -s "$GANGLION_URL/v1/metrics?experiment_id=exp-001" | jq .data
+curl -s "$GANGLION_URL/v1/leaderboard" | jq .data
+```
+
+### Components (remote only)
+
+```
+curl -s "$GANGLION_URL/v1/components" | jq .data
 ```
 
 ### Source code (remote only)
 
 ```
-curl -s "$GANGLION_URL/source/tools/train.py" | jq .content -r
+curl -s "$GANGLION_URL/v1/source/tools/train.py" | jq .data.content -r
 ```
 
 ## Execute
@@ -121,9 +147,9 @@ ganglion run $GANGLION_PROJECT
 ganglion run $GANGLION_PROJECT --overrides '{"target_metric":"accuracy"}'
 
 # remote
-curl -s -X POST "$GANGLION_URL/run/pipeline" \
+curl -s -X POST "$GANGLION_URL/v1/run/pipeline" \
   -H "Content-Type: application/json" \
-  -d '{"overrides":{"target_metric":"accuracy"}}' | jq
+  -d '{"overrides":{"target_metric":"accuracy"}}' | jq .data
 ```
 
 ### Run a single stage
@@ -133,17 +159,17 @@ curl -s -X POST "$GANGLION_URL/run/pipeline" \
 ganglion run $GANGLION_PROJECT --stage plan
 
 # remote
-curl -s -X POST "$GANGLION_URL/run/stage/plan" \
+curl -s -X POST "$GANGLION_URL/v1/run/stage/plan" \
   -H "Content-Type: application/json" \
-  -d '{"context":{"model":"resnet18"}}' | jq
+  -d '{"context":{"model":"resnet18"}}' | jq .data
 ```
 
 ### Run direct experiment (remote only)
 
 ```
-curl -s -X POST "$GANGLION_URL/run/experiment" \
+curl -s -X POST "$GANGLION_URL/v1/run/experiment" \
   -H "Content-Type: application/json" \
-  -d '{"config":{"learning_rate":0.001,"epochs":10}}' | jq
+  -d '{"config":{"learning_rate":0.001,"epochs":10}}' | jq .data
 ```
 
 ## Mutate (remote only)
@@ -153,48 +179,56 @@ Mutations require the HTTP bridge. Start the server first.
 Write and register a new tool:
 
 ```
-curl -s -X POST "$GANGLION_URL/tools" \
+curl -s -X POST "$GANGLION_URL/v1/tools" \
   -H "Content-Type: application/json" \
-  -d '{"name":"my_tool","code":"<tool code>","category":"training"}' | jq
+  -d '{"name":"my_tool","code":"<tool code>","category":"training"}' | jq .data
 ```
 
 Write and register a new agent:
 
 ```
-curl -s -X POST "$GANGLION_URL/agents" \
+curl -s -X POST "$GANGLION_URL/v1/agents" \
   -H "Content-Type: application/json" \
-  -d '{"name":"MyAgent","code":"<agent class code>"}' | jq
+  -d '{"name":"MyAgent","code":"<agent class code>"}' | jq .data
+```
+
+Write and register a new component:
+
+```
+curl -s -X POST "$GANGLION_URL/v1/components" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"MyBackbone","code":"<component code>","component_type":"backbone"}' | jq .data
 ```
 
 Patch the pipeline:
 
 ```
-curl -s -X PATCH "$GANGLION_URL/pipeline" \
+curl -s -X PATCH "$GANGLION_URL/v1/pipeline" \
   -H "Content-Type: application/json" \
-  -d '{"operations":[{"op":"add_stage","stage":{"name":"validate","agent":"Validator","depends_on":["train"]}}]}' | jq
+  -d '{"operations":[{"op":"add_stage","stage":{"name":"validate","agent":"Validator","depends_on":["train"]}}]}' | jq .data
 ```
 
 Swap retry policy:
 
 ```
-curl -s -X PUT "$GANGLION_URL/policies/train" \
+curl -s -X PUT "$GANGLION_URL/v1/policies/train" \
   -H "Content-Type: application/json" \
-  -d '{"retry_policy":{"type":"escalating","max_attempts":5,"temperature_step":0.1}}' | jq
+  -d '{"retry_policy":{"type":"escalating","max_attempts":5,"temperature_step":0.1}}' | jq .data
 ```
 
 Update a prompt section:
 
 ```
-curl -s -X POST "$GANGLION_URL/prompts" \
+curl -s -X POST "$GANGLION_URL/v1/prompts" \
   -H "Content-Type: application/json" \
-  -d '{"agent_name":"Planner","prompt_section":"strategy","content":"Focus on low parameter count."}' | jq
+  -d '{"agent_name":"Planner","prompt_section":"strategy","content":"Focus on low parameter count."}' | jq .data
 ```
 
 ## Rollback (remote only)
 
 ```
-curl -s -X POST "$GANGLION_URL/rollback/last" | jq
-curl -s -X POST "$GANGLION_URL/rollback/0" | jq
+curl -s -X POST "$GANGLION_URL/v1/rollback/last" | jq .data
+curl -s -X POST "$GANGLION_URL/v1/rollback/0" | jq .data
 ```
 
 ## Multi-bot workflow
@@ -213,10 +247,11 @@ ganglion serve ./my-subnet --bot-id beta  --port 8900
 
 ## Typical workflow
 
-1. Check status and knowledge from prior runs
-2. Review what tools and agents are registered
-3. Write or adjust tools and agents based on what worked/failed
-4. Patch the pipeline if needed
-5. Run the pipeline
-6. Check metrics and leaderboard
-7. Record insights and iterate
+1. Check health and readiness (`/healthz`, `/readyz`)
+2. Check status and knowledge from prior runs
+3. Review what tools, agents, and components are registered
+4. Write or adjust tools and agents based on what worked/failed
+5. Patch the pipeline if needed
+6. Run the pipeline
+7. Check metrics and leaderboard
+8. Record insights and iterate
