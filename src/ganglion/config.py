@@ -79,9 +79,16 @@ class GanglionConfig:
                 return []
             return [item.strip() for item in raw.split(",") if item.strip()]
 
+        openai_api_key = os.environ.get("OPENAI_API_KEY", "")
+        openai_base_url = os.environ.get("OPENAI_BASE_URL", "")
+
+        # Default to OPEN-API-KEY when using Chutes
+        if "chutes" in openai_base_url.lower() and not openai_api_key:
+            openai_api_key = "OPEN-API-KEY"
+
         return cls(
-            openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
-            openai_base_url=os.environ.get("OPENAI_BASE_URL", ""),
+            openai_api_key=openai_api_key,
+            openai_base_url=openai_base_url,
             llm_model=_get("LLM_MODEL", "gpt-4o"),
             llm_max_retries=_get_int("LLM_MAX_RETRIES", 5),
             llm_base_delay=_get_float("LLM_BASE_DELAY", 1.0),
