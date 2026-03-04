@@ -36,9 +36,7 @@ class TestMCPClientConfig:
         assert any("name" in e for e in errors)
 
     def test_invalid_transport(self):
-        config = MCPClientConfig(
-            name="test", transport="websocket", command=["python"]
-        )
+        config = MCPClientConfig(name="test", transport="websocket", command=["python"])
         errors = config.validate()
         assert any("transport" in e for e in errors)
 
@@ -53,9 +51,7 @@ class TestMCPClientConfig:
         assert any("url" in e for e in errors)
 
     def test_invalid_timeout(self):
-        config = MCPClientConfig(
-            name="test", transport="stdio", command=["python"], timeout=0
-        )
+        config = MCPClientConfig(name="test", transport="stdio", command=["python"], timeout=0)
         errors = config.validate()
         assert any("timeout" in e for e in errors)
 
@@ -72,9 +68,7 @@ class TestMCPClientConfig:
         assert d["tool_prefix"] == "myprefix"
 
     def test_defaults(self):
-        config = MCPClientConfig(
-            name="test", transport="stdio", command=["python"]
-        )
+        config = MCPClientConfig(name="test", transport="stdio", command=["python"])
         assert config.category == "mcp"
         assert config.timeout == 30.0
         assert config.tool_prefix == ""
@@ -210,17 +204,13 @@ class TestMCPClientBridge:
         result = await handler(x="hello")
         assert isinstance(result, ToolOutput)
         assert result.content == "result text"
-        mock_session.call_tool.assert_called_once_with(
-            "test_tool", arguments={"x": "hello"}
-        )
+        mock_session.call_tool.assert_called_once_with("test_tool", arguments={"x": "hello"})
 
     @pytest.mark.asyncio
     async def test_handler_returns_error_content_on_mcp_error(self):
         from ganglion.mcp.client import MCPClientBridge
 
-        config = MCPClientConfig(
-            name="test", transport="stdio", command=["python"], timeout=5.0
-        )
+        config = MCPClientConfig(name="test", transport="stdio", command=["python"], timeout=5.0)
         bridge = MCPClientBridge(config)
 
         mock_session = MagicMock()
@@ -242,9 +232,7 @@ class TestMCPClientBridge:
     async def test_handler_timeout(self):
         from ganglion.mcp.client import MCPClientBridge
 
-        config = MCPClientConfig(
-            name="test", transport="stdio", command=["python"], timeout=0.01
-        )
+        config = MCPClientConfig(name="test", transport="stdio", command=["python"], timeout=0.01)
         bridge = MCPClientBridge(config)
 
         mock_session = MagicMock()
@@ -262,9 +250,7 @@ class TestMCPClientBridge:
     def test_get_tools_empty_before_connect(self):
         from ganglion.mcp.client import MCPClientBridge
 
-        config = MCPClientConfig(
-            name="test", transport="stdio", command=["python"]
-        )
+        config = MCPClientConfig(name="test", transport="stdio", command=["python"])
         bridge = MCPClientBridge(config)
         assert bridge.get_tools() == {}
 
@@ -272,9 +258,7 @@ class TestMCPClientBridge:
     async def test_disconnect_clears_tools(self):
         from ganglion.mcp.client import MCPClientBridge
 
-        config = MCPClientConfig(
-            name="test", transport="stdio", command=["python"]
-        )
+        config = MCPClientConfig(name="test", transport="stdio", command=["python"])
         bridge = MCPClientBridge(config)
         # Manually add a tool to simulate post-connect state
         bridge._tools["test_tool"] = ToolDef(

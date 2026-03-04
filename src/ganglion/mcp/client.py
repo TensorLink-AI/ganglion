@@ -78,9 +78,7 @@ class MCPClientBridge:
         )
         transport = await self._exit_stack.enter_async_context(stdio_client(params))
         read, write = transport
-        self.session = await self._exit_stack.enter_async_context(
-            ClientSession(read, write)
-        )
+        self.session = await self._exit_stack.enter_async_context(ClientSession(read, write))
 
     async def _connect_sse(self) -> None:
         """Connect via SSE transport."""
@@ -93,13 +91,9 @@ class MCPClientBridge:
                 "SSE transport requires additional dependencies from the mcp package"
             ) from e
 
-        transport = await self._exit_stack.enter_async_context(
-            sse_client(self.config.url)
-        )
+        transport = await self._exit_stack.enter_async_context(sse_client(self.config.url))
         read, write = transport
-        self.session = await self._exit_stack.enter_async_context(
-            ClientSession(read, write)
-        )
+        self.session = await self._exit_stack.enter_async_context(ClientSession(read, write))
 
     async def _discover_tools(self) -> None:
         """List tools from the MCP server and create ToolDef wrappers."""
@@ -115,15 +109,12 @@ class MCPClientBridge:
                 name=tool_name,
                 description=mcp_tool.description or f"MCP tool: {mcp_tool.name}",
                 func=handler,
-                parameters_schema=mcp_tool.inputSchema
-                or {"type": "object", "properties": {}},
+                parameters_schema=mcp_tool.inputSchema or {"type": "object", "properties": {}},
                 category=self.config.category,
             )
             self._tools[tool_name] = tool_def
 
-        logger.info(
-            "MCP server '%s': discovered %d tools", self.config.name, len(self._tools)
-        )
+        logger.info("MCP server '%s': discovered %d tools", self.config.name, len(self._tools))
 
     def _make_handler(self, tool_name: str) -> Callable[..., Any]:
         """Create an async handler closure that calls the MCP tool."""
@@ -172,9 +163,7 @@ class MCPClientBridge:
             try:
                 await self._exit_stack.aclose()
             except Exception as e:
-                logger.warning(
-                    "Error closing MCP connection to '%s': %s", self.config.name, e
-                )
+                logger.warning("Error closing MCP connection to '%s': %s", self.config.name, e)
             self._exit_stack = None
         self.session = None
         self._tools.clear()

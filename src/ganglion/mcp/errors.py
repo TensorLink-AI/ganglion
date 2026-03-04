@@ -26,6 +26,5 @@ class MCPNotAvailableError(MCPError):
 
     def __init__(self) -> None:
         super().__init__(
-            "MCP support requires the 'mcp' package. "
-            "Install it with: pip install ganglion[mcp]"
+            "MCP support requires the 'mcp' package. Install it with: pip install ganglion[mcp]"
         )

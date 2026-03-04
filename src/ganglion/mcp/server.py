@@ -60,7 +60,8 @@ class MCPServerBridge:
 
         @self._server.call_tool()
         async def handle_call_tool(
-            name: str, arguments: dict[str, Any] | None = None,
+            name: str,
+            arguments: dict[str, Any] | None = None,
         ) -> list[TextContent]:
             tool_def = self._registry.get(name)
             if tool_def is None:
@@ -83,9 +84,7 @@ class MCPServerBridge:
         from mcp.server.stdio import stdio_server
 
         async with stdio_server() as (read, write):
-            await self._server.run(
-                read, write, self._server.create_initialization_options()
-            )
+            await self._server.run(read, write, self._server.create_initialization_options())
 
     async def run_sse(self, host: str = "127.0.0.1", port: int = 8900) -> None:
         """Run as SSE transport MCP server."""
@@ -97,9 +96,7 @@ class MCPServerBridge:
         sse = SseServerTransport("/messages")
 
         async def handle_sse(request: Any) -> None:
-            async with sse.connect_sse(
-                request.scope, request.receive, request._send
-            ) as streams:
+            async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
                 await self._server.run(
                     streams[0],
                     streams[1],

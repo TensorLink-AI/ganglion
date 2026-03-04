@@ -205,11 +205,13 @@ class FrameworkState:
         """MCP connection status snapshot."""
         servers = []
         for name, bridge in self._mcp_bridges.items():
-            servers.append({
-                "name": name,
-                "connected": bridge.session is not None,
-                "tools": len(bridge.get_tools()),
-            })
+            servers.append(
+                {
+                    "name": name,
+                    "connected": bridge.session is not None,
+                    "tools": len(bridge.get_tools()),
+                }
+            )
         return {
             "connected_servers": servers,
             "total_tools": sum(len(b.get_tools()) for b in self._mcp_bridges.values()),
@@ -464,17 +466,14 @@ class FrameworkState:
             try:
                 tool_names = await self._connect_mcp_bridge(config)
             except Exception as e:
-                return MutationResult(
-                    success=False, errors=[f"Connection failed: {e}"]
-                )
+                return MutationResult(success=False, errors=[f"Connection failed: {e}"])
 
             self.mutations.append(
                 Mutation(
                     mutation_type="connect_mcp",
                     target=config.name,
                     description=(
-                        f"Connected MCP server '{config.name}', "
-                        f"registered {len(tool_names)} tools"
+                        f"Connected MCP server '{config.name}', registered {len(tool_names)} tools"
                     ),
                     rollback_data={"config": config.to_dict(), "tools": tool_names},
                 )
@@ -485,14 +484,10 @@ class FrameworkState:
     async def disconnect_mcp_server(self, name: str) -> MutationResult:
         """Disconnect from an MCP server and unregister its tools."""
         async with self._mutation_lock:
-            self._check_not_running(
-                "Cannot remove MCP connections during a pipeline run"
-            )
+            self._check_not_running("Cannot remove MCP connections during a pipeline run")
 
             if name not in self._mcp_bridges:
-                return MutationResult(
-                    success=False, errors=[f"MCP server '{name}' not connected"]
-                )
+                return MutationResult(success=False, errors=[f"MCP server '{name}' not connected"])
 
             bridge = self._mcp_bridges[name]
             tool_names = list(bridge.get_tools().keys())
@@ -500,17 +495,14 @@ class FrameworkState:
             try:
                 await self._disconnect_mcp_bridge(name)
             except Exception as e:
-                return MutationResult(
-                    success=False, errors=[f"Disconnect failed: {e}"]
-                )
+                return MutationResult(success=False, errors=[f"Disconnect failed: {e}"])
 
             self.mutations.append(
                 Mutation(
                     mutation_type="disconnect_mcp",
                     target=name,
                     description=(
-                        f"Disconnected MCP server '{name}', "
-                        f"unregistered {len(tool_names)} tools"
+                        f"Disconnected MCP server '{name}', unregistered {len(tool_names)} tools"
                     ),
                     rollback_data={"tools": tool_names},
                 )
