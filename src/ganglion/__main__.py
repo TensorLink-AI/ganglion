@@ -195,12 +195,11 @@ def _run_init(args: argparse.Namespace) -> None:
     from ganglion.templates import get_template
 
     template = get_template(args.subnet)
-    is_builtin = template.name != args.subnet or args.subnet == "generic"
 
-    # Apply CLI overrides — only override name/slug for unregistered templates
+    # Apply CLI overrides
     if args.netuid != 0:
         template = replace(template, netuid=args.netuid)
-    if args.subnet != "generic" and not is_builtin:
+    if args.subnet != "generic":
         template = replace(template, name=args.subnet, slug=args.subnet.lower().replace(" ", "-"))
 
     target = Path(args.target_dir)
