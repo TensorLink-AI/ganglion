@@ -51,13 +51,17 @@ class MCPServerBridge:
                     Tool(
                         name=tool_dict["name"],
                         description=tool_dict.get("description", ""),
-                        inputSchema=tool_dict.get("parameters", {"type": "object", "properties": {}}),
+                        inputSchema=tool_dict.get(
+                            "parameters", {"type": "object", "properties": {}}
+                        ),
                     )
                 )
             return tools
 
         @self._server.call_tool()
-        async def handle_call_tool(name: str, arguments: dict[str, Any] | None = None) -> list[TextContent]:
+        async def handle_call_tool(
+            name: str, arguments: dict[str, Any] | None = None,
+        ) -> list[TextContent]:
             tool_def = self._registry.get(name)
             if tool_def is None:
                 return [TextContent(type="text", text=f"Error: Tool '{name}' not found")]
@@ -85,11 +89,10 @@ class MCPServerBridge:
 
     async def run_sse(self, host: str = "127.0.0.1", port: int = 8900) -> None:
         """Run as SSE transport MCP server."""
+        import uvicorn
         from mcp.server.sse import SseServerTransport
         from starlette.applications import Starlette
         from starlette.routing import Route
-
-        import uvicorn
 
         sse = SseServerTransport("/messages")
 
