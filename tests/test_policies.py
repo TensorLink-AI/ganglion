@@ -22,7 +22,9 @@ def make_result(
     raw_text: str = "",
 ) -> AgentResult:
     return AgentResult(
-        success=success, structured=structured, raw_text=raw_text,
+        success=success,
+        structured=structured,
+        raw_text=raw_text,
     )
 
 
@@ -74,9 +76,7 @@ class TestEscalatingRetry:
         assert config is None
 
     def test_stall_detection(self):
-        detector = ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured or {}
-        )
+        detector = ConfigComparisonStallDetector(extract_config=lambda r: r.structured or {})
         policy = EscalatingRetry(max_attempts=5, stall_detector=detector)
 
         result1 = make_result(structured={"lr": 0.01})
@@ -119,30 +119,22 @@ class TestModelEscalationRetry:
 
 class TestConfigComparisonStallDetector:
     def test_no_stall_on_different_configs(self):
-        detector = ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured or {}
-        )
+        detector = ConfigComparisonStallDetector(extract_config=lambda r: r.structured or {})
         assert detector.is_stalled(0, make_result(structured={"a": 1})) is False
         assert detector.is_stalled(1, make_result(structured={"a": 2})) is False
 
     def test_stall_on_same_config(self):
-        detector = ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured or {}
-        )
+        detector = ConfigComparisonStallDetector(extract_config=lambda r: r.structured or {})
         assert detector.is_stalled(0, make_result(structured={"a": 1})) is False
         assert detector.is_stalled(1, make_result(structured={"a": 1})) is True
 
     def test_divergence_prompt(self):
-        detector = ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured or {}
-        )
+        detector = ConfigComparisonStallDetector(extract_config=lambda r: r.structured or {})
         prompt = detector.divergence_prompt()
         assert "CRITICAL" in prompt
 
     def test_reset(self):
-        detector = ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured or {}
-        )
+        detector = ConfigComparisonStallDetector(extract_config=lambda r: r.structured or {})
         detector.is_stalled(0, make_result(structured={"a": 1}))
         detector.reset()
         # Should not detect stall after reset

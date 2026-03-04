@@ -126,10 +126,12 @@ def _get_state() -> FrameworkState:
     if _state is None:
         raise HTTPException(
             status_code=503,
-            detail={"error": {
-                "code": "NOT_CONFIGURED",
-                "message": "Bridge not configured. Call configure() first.",
-            }},
+            detail={
+                "error": {
+                    "code": "NOT_CONFIGURED",
+                    "message": "Bridge not configured. Call configure() first.",
+                }
+            },
         )
     return _state
 
@@ -285,17 +287,15 @@ async def get_knowledge(capability: str | None = None, max_entries: int = 20):
     if not state.knowledge:
         return _success_response({"patterns": [], "antipatterns": [], "summary": None})
     query = KnowledgeQuery(capability=capability, max_entries=max_entries)
-    return _success_response({
-        "patterns": [
-            p.__dict__
-            for p in await state.knowledge.backend.query_patterns(query)
-        ],
-        "antipatterns": [
-            a.__dict__
-            for a in await state.knowledge.backend.query_antipatterns(query)
-        ],
-        "summary": await state.knowledge.summary(),
-    })
+    return _success_response(
+        {
+            "patterns": [p.__dict__ for p in await state.knowledge.backend.query_patterns(query)],
+            "antipatterns": [
+                a.__dict__ for a in await state.knowledge.backend.query_antipatterns(query)
+            ],
+            "summary": await state.knowledge.summary(),
+        }
+    )
 
 
 @app.get("/v1/source/{path:path}")
@@ -315,10 +315,12 @@ async def get_source(path: str):
     if not full_path.exists():
         raise HTTPException(
             status_code=404,
-            detail={"error": {
-                "code": "NOT_FOUND",
-                "message": f"Not found: {path}",
-            }},
+            detail={
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": f"Not found: {path}",
+                }
+            },
         )
     try:
         content = full_path.read_text()
@@ -356,9 +358,7 @@ async def write_tool(body: WriteToolRequest):
 async def write_agent(body: WriteAgentRequest):
     """Write and register a new agent."""
     state = _get_state()
-    result = await state.write_and_register_agent(
-        body.name, body.code, body.test_task
-    )
+    result = await state.write_and_register_agent(body.name, body.code, body.test_task)
     if not result.success:
         _error_response("VALIDATION_FAILED", "; ".join(result.errors))
     return _success_response({"path": result.path})
@@ -422,9 +422,7 @@ async def run_pipeline(body: RunPipelineRequest | None = None):
     """Execute full pipeline."""
     state = _get_state()
     try:
-        result = await state.run_pipeline(
-            overrides=body.overrides if body else None
-        )
+        result = await state.run_pipeline(overrides=body.overrides if body else None)
     except Exception as exc:
         logger.error("Pipeline execution failed", exc_info=True)
         _error_response("EXECUTION_ERROR", str(exc), status_code=500)
@@ -436,9 +434,7 @@ async def run_stage(stage_name: str, body: RunStageRequest | None = None):
     """Execute a single pipeline stage."""
     state = _get_state()
     try:
-        result = await state.run_single_stage(
-            stage_name, body.context if body else None
-        )
+        result = await state.run_single_stage(stage_name, body.context if body else None)
     except Exception as exc:
         logger.error("Stage execution failed: %s", stage_name, exc_info=True)
         _error_response("EXECUTION_ERROR", str(exc), status_code=500)

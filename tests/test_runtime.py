@@ -1,6 +1,5 @@
 """Tests for Layer 1: Runtime."""
 
-
 from ganglion.runtime.coerce import (
     CoercionPipeline,
     coerce_empty_to_list,
@@ -64,7 +63,7 @@ class TestCoercionFunctions:
         assert value == {"key": "value"}
 
     def test_coerce_json_strings_list(self):
-        value, modified = coerce_json_strings("arg", '[1, 2, 3]', None)
+        value, modified = coerce_json_strings("arg", "[1, 2, 3]", None)
         assert modified is True
         assert value == [1, 2, 3]
 

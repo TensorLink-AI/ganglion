@@ -76,11 +76,13 @@ class SimpleAgent:
             for tc in tool_calls:
                 result = await self._execute_tool(tc)
                 results.append(result)
-                self.messages.append({
-                    "role": "tool",
-                    "tool_call_id": result.tool_call_id,
-                    "content": result.content,
-                })
+                self.messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": result.tool_call_id,
+                        "content": result.content,
+                    }
+                )
 
                 if result.is_finish:
                     return AgentResult(
@@ -129,11 +131,13 @@ class SimpleAgent:
             hints = self.type_hints.get(name, {})
             arguments = self.coercion.apply(arguments, hints)
 
-            calls.append(ToolCall(
-                id=raw.get("id", ""),
-                name=name,
-                arguments=arguments,
-            ))
+            calls.append(
+                ToolCall(
+                    id=raw.get("id", ""),
+                    name=name,
+                    arguments=arguments,
+                )
+            )
         return calls
 
     async def _execute_tool(self, tool_call: ToolCall) -> ToolResult:

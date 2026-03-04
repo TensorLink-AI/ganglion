@@ -50,6 +50,7 @@ class GanglionConfig:
 
         Uses GANGLION_ prefix for all variables.
         """
+
         def _get(key: str, default: str = "") -> str:
             return os.environ.get(f"GANGLION_{key}", default)
 

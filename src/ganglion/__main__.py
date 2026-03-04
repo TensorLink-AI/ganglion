@@ -39,6 +39,7 @@ def _setup_logging(level: str = "INFO") -> None:
 
 def _setup_signal_handlers() -> None:
     """Install graceful shutdown handlers for SIGTERM and SIGINT."""
+
     def _handle_shutdown(signum, frame):
         sig_name = signal.Signals(signum).name
         logger.info("Received %s, shutting down gracefully", sig_name)
@@ -211,7 +212,8 @@ def _run_init(args: argparse.Namespace) -> None:
         logger.info("  Created: %s", path)
     logger.info(
         "Next: edit %s/config.py, then run: ganglion serve %s --bot-id my-bot",
-        target, target,
+        target,
+        target,
     )
 
 
@@ -236,7 +238,8 @@ def _run_serve(args: argparse.Namespace) -> None:
 
     logger.info(
         "Ganglion bridge starting on %s:%d (project=%s, pipeline=%s, tools=%d, agents=%d)",
-        host, port,
+        host,
+        port,
         state.project_root.resolve(),
         state.pipeline_def.name,
         len(state.tool_registry.list_all()),
@@ -277,13 +280,9 @@ def _run_knowledge(args: argparse.Namespace) -> None:
 
     async def _gather():
         return {
-            "patterns": [
-                p.__dict__
-                for p in await state.knowledge.backend.query_patterns(query)
-            ],
+            "patterns": [p.__dict__ for p in await state.knowledge.backend.query_patterns(query)],
             "antipatterns": [
-                a.__dict__
-                for a in await state.knowledge.backend.query_antipatterns(query)
+                a.__dict__ for a in await state.knowledge.backend.query_antipatterns(query)
             ],
             "summary": await state.knowledge.summary(),
         }

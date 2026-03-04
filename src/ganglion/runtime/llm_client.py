@@ -77,7 +77,7 @@ class LLMClient:
             except (RateLimitError, APIConnectionError) as e:
                 last_error = e
                 if attempt < self.max_retries:
-                    delay = min(self.base_delay * (2 ** attempt), self.max_delay)
+                    delay = min(self.base_delay * (2**attempt), self.max_delay)
                     logger.warning(
                         "Retryable error (attempt %d/%d): %s. Retrying in %.1fs",
                         attempt + 1,
@@ -90,7 +90,7 @@ class LLMClient:
                 if e.status_code and e.status_code >= 500:
                     last_error = e
                     if attempt < self.max_retries:
-                        delay = min(self.base_delay * (2 ** attempt), self.max_delay)
+                        delay = min(self.base_delay * (2**attempt), self.max_delay)
                         logger.warning(
                             "Server error (attempt %d/%d): %s. Retrying in %.1fs",
                             attempt + 1,

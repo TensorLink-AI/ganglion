@@ -96,19 +96,24 @@ def my_tool(x: int) -> str:
     @pytest.mark.asyncio
     async def test_apply_pipeline_patch_add(self, state):
         from ganglion.composition.base_agent import BaseAgentWrapper
+
         state.agent_registry.register("NewAgent", BaseAgentWrapper)
 
-        result = await state.apply_pipeline_patch([
-            {"op": "add_stage", "stage": {"name": "new_stage", "agent": "NewAgent"}},
-        ])
+        result = await state.apply_pipeline_patch(
+            [
+                {"op": "add_stage", "stage": {"name": "new_stage", "agent": "NewAgent"}},
+            ]
+        )
         assert result.success is True
         assert state.pipeline_def.get_stage("new_stage") is not None
 
     @pytest.mark.asyncio
     async def test_apply_pipeline_patch_invalid(self, state):
-        result = await state.apply_pipeline_patch([
-            {"op": "add_stage", "stage": {"name": "bad", "agent": "NonexistentAgent"}},
-        ])
+        result = await state.apply_pipeline_patch(
+            [
+                {"op": "add_stage", "stage": {"name": "bad", "agent": "NonexistentAgent"}},
+            ]
+        )
         assert result.success is False
 
     @pytest.mark.asyncio
@@ -134,11 +139,14 @@ def my_tool(x: int) -> str:
     @pytest.mark.asyncio
     async def test_rollback_last(self, state):
         from ganglion.composition.base_agent import BaseAgentWrapper
+
         state.agent_registry.register("NewAgent", BaseAgentWrapper)
 
-        await state.apply_pipeline_patch([
-            {"op": "add_stage", "stage": {"name": "added", "agent": "NewAgent"}},
-        ])
+        await state.apply_pipeline_patch(
+            [
+                {"op": "add_stage", "stage": {"name": "added", "agent": "NewAgent"}},
+            ]
+        )
         assert state.pipeline_def.get_stage("added") is not None
 
         result = await state.rollback_last()
@@ -162,7 +170,7 @@ def my_tool(x: int) -> str:
     def test_load_from_project_dir(self, tmp_dir):
         """Test FrameworkState.load() discovers config, tools, and agents."""
         # Write a config.py
-        config_code = '''
+        config_code = """
 from ganglion.orchestration.task_context import SubnetConfig, MetricDef, TaskDef, OutputSpec
 from ganglion.orchestration.pipeline import PipelineDef, StageDef
 
@@ -180,7 +188,7 @@ pipeline = PipelineDef(
         StageDef(name="train", agent="LoadTrainer"),
     ],
 )
-'''
+"""
         (tmp_dir / "config.py").write_text(config_code)
 
         # Write a tool
@@ -198,7 +206,7 @@ def load_test_tool(x: int) -> str:
         # Write an agent
         agents_dir = tmp_dir / "agents"
         agents_dir.mkdir()
-        (agents_dir / "trainer.py").write_text('''
+        (agents_dir / "trainer.py").write_text("""
 from ganglion.composition.base_agent import BaseAgentWrapper
 
 class LoadTrainer(BaseAgentWrapper):
@@ -207,7 +215,7 @@ class LoadTrainer(BaseAgentWrapper):
 
     def build_tools(self, task):
         return [], {}
-''')
+""")
 
         state = FrameworkState.load(tmp_dir)
         assert state.subnet_config.name == "LoadTest"

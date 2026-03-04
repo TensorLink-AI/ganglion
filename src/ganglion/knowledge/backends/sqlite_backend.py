@@ -61,9 +61,7 @@ class SqliteKnowledgeBackend:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_antipatterns_source_bot ON antipatterns(source_bot)"
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_patterns_timestamp ON patterns(timestamp)"
-            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_patterns_timestamp ON patterns(timestamp)")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_antipatterns_timestamp ON antipatterns(timestamp)"
             )
@@ -188,6 +186,7 @@ class SqliteKnowledgeBackend:
     def _row_to_pattern(self, row: sqlite3.Row) -> Pattern:
         config = json.loads(row["config"]) if row["config"] else None
         from datetime import datetime
+
         return Pattern(
             capability=row["capability"],
             description=row["description"],
@@ -203,6 +202,7 @@ class SqliteKnowledgeBackend:
     def _row_to_antipattern(self, row: sqlite3.Row) -> Antipattern:
         config = json.loads(row["config"]) if row["config"] else None
         from datetime import datetime
+
         return Antipattern(
             capability=row["capability"],
             error_summary=row["error_summary"],

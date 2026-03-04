@@ -155,9 +155,7 @@ class FrameworkState:
                     continue
                 try:
                     # Import and find BaseAgentWrapper subclasses
-                    module_spec = importlib.util.spec_from_file_location(
-                        py_file.stem, str(py_file)
-                    )
+                    module_spec = importlib.util.spec_from_file_location(py_file.stem, str(py_file))
                     if module_spec and module_spec.loader:
                         module = importlib.util.module_from_spec(module_spec)
                         module_spec.loader.exec_module(module)
@@ -166,10 +164,7 @@ class FrameworkState:
                         from ganglion.composition.base_agent import BaseAgentWrapper
 
                         for name, obj in _inspect.getmembers(module, _inspect.isclass):
-                            if (
-                                issubclass(obj, BaseAgentWrapper)
-                                and obj is not BaseAgentWrapper
-                            ):
+                            if issubclass(obj, BaseAgentWrapper) and obj is not BaseAgentWrapper:
                                 agent_registry.register(name, obj)
                 except (ImportError, SyntaxError, OSError, AttributeError) as e:
                     logger.warning("Failed to load agent from %s: %s", py_file, e)
@@ -334,9 +329,7 @@ class FrameworkState:
             if stage_name:
                 stage = self.pipeline_def.get_stage(stage_name)
                 if not stage:
-                    return MutationResult(
-                        success=False, errors=[f"Stage '{stage_name}' not found"]
-                    )
+                    return MutationResult(success=False, errors=[f"Stage '{stage_name}' not found"])
                 previous_policy = stage.retry
                 stage.retry = retry_policy
             else:
@@ -397,15 +390,14 @@ class FrameworkState:
                 path.write_text("\n".join(new_lines))
             else:
                 section_marker = f"# section: {prompt_section}"
-                path.write_text(f"{section_marker}\n{prompt_section} = \"\"\"{content}\"\"\"")
+                path.write_text(f'{section_marker}\n{prompt_section} = """{content}"""')
 
             self.mutations.append(
                 Mutation(
                     mutation_type="write_prompt",
                     target=f"{agent_name}/{prompt_section}",
                     description=(
-                        f"Updated prompt section '{prompt_section}'"
-                        f" for agent '{agent_name}'"
+                        f"Updated prompt section '{prompt_section}' for agent '{agent_name}'"
                     ),
                     diff=content,
                     rollback_data={"path": str(path), "previous": previous},
@@ -416,9 +408,7 @@ class FrameworkState:
 
     # ── Execution methods ───────────────────────────────────
 
-    async def run_pipeline(
-        self, overrides: dict | None = None
-    ) -> PipelineResult:
+    async def run_pipeline(self, overrides: dict | None = None) -> PipelineResult:
         """Execute the current pipeline. Blocks mutations during execution."""
         async with self._run_lock:
             self._is_running = True
@@ -453,9 +443,7 @@ class FrameworkState:
             try:
                 stage_def = self.pipeline_def.get_stage(stage_name)
                 if not stage_def:
-                    return StageResult(
-                        success=False, error=f"Stage '{stage_name}' not found"
-                    )
+                    return StageResult(success=False, error=f"Stage '{stage_name}' not found")
 
                 task = TaskContext(
                     subnet_config=self.subnet_config,
@@ -502,9 +490,7 @@ class FrameworkState:
     async def rollback_last(self) -> MutationResult:
         """Undo the most recent mutation."""
         if not self.mutations:
-            return MutationResult(
-                success=False, errors=["No mutations to rollback"]
-            )
+            return MutationResult(success=False, errors=["No mutations to rollback"])
 
         async with self._mutation_lock:
             self._check_not_running("Cannot rollback during a run")

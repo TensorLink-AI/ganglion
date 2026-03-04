@@ -17,6 +17,7 @@ class TaskContext:
     This import is deferred to avoid circular imports. At runtime,
     BaseAgentWrapper.run() receives the real TaskContext from the orchestrator.
     """
+
     pass
 
 

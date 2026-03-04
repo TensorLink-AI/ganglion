@@ -64,9 +64,7 @@ class PipelineDef:
         for stage in self.stages:
             for dep in stage.depends_on:
                 if dep not in name_set:
-                    errors.append(
-                        f"Stage '{stage.name}' depends on '{dep}' which does not exist"
-                    )
+                    errors.append(f"Stage '{stage.name}' depends on '{dep}' which does not exist")
 
         # Check for cycles (topological sort)
         if not errors and self._has_cycle():
@@ -184,10 +182,7 @@ class PipelineDef:
             visit_state[node] = visited
             return False
 
-        return any(
-            visit_state[node] == unvisited and dfs(node)
-            for node in adjacency
-        )
+        return any(visit_state[node] == unvisited and dfs(node) for node in adjacency)
 
     def _topological_order(self) -> list[StageDef]:
         """Return stages in topological (dependency) order."""

@@ -62,7 +62,8 @@ class JsonKnowledgeBackend:
             patterns = [p for p in patterns if p.timestamp >= query.since]
         if query.min_metric is not None:
             patterns = [
-                p for p in patterns
+                p
+                for p in patterns
                 if p.metric_value is not None and p.metric_value >= query.min_metric
             ]
         if query.exclude_source is not None:
@@ -70,7 +71,7 @@ class JsonKnowledgeBackend:
 
         # Most recent first, limited to max_entries
         patterns.sort(key=lambda p: p.timestamp, reverse=True)
-        return patterns[:query.max_entries]
+        return patterns[: query.max_entries]
 
     async def query_antipatterns(self, query: KnowledgeQuery) -> list[Antipattern]:
         data = self._load_antipatterns()
@@ -84,7 +85,7 @@ class JsonKnowledgeBackend:
             antipatterns = [a for a in antipatterns if a.source_bot != query.exclude_source]
 
         antipatterns.sort(key=lambda a: a.timestamp, reverse=True)
-        return antipatterns[:query.max_entries]
+        return antipatterns[: query.max_entries]
 
     async def count(self) -> dict[str, int]:
         return {

@@ -1,6 +1,5 @@
 """Tests for Layer 2: Composition."""
 
-
 from ganglion.composition.prompt import PromptBuilder
 from ganglion.composition.tool_registry import (
     _infer_schema,
@@ -112,39 +111,21 @@ class TestPromptBuilder:
         assert "## context" in prompt
 
     def test_empty_sections_skipped(self):
-        prompt = (
-            PromptBuilder()
-            .section("role", "Agent")
-            .section("empty", "   ")
-            .build()
-        )
+        prompt = PromptBuilder().section("role", "Agent").section("empty", "   ").build()
         assert "## empty" not in prompt
 
     def test_remove_section(self):
         builder = (
-            PromptBuilder()
-            .section("role", "Agent")
-            .section("extra", "Extra stuff")
-            .remove("extra")
+            PromptBuilder().section("role", "Agent").section("extra", "Extra stuff").remove("extra")
         )
         assert not builder.has_section("extra")
         assert builder.has_section("role")
 
     def test_replace_section(self):
-        prompt = (
-            PromptBuilder()
-            .section("role", "Original")
-            .replace("role", "Replaced")
-            .build()
-        )
+        prompt = PromptBuilder().section("role", "Original").replace("role", "Replaced").build()
         assert "Replaced" in prompt
         assert "Original" not in prompt
 
     def test_section_names(self):
-        builder = (
-            PromptBuilder()
-            .section("a", "A")
-            .section("b", "B")
-            .section("c", "C")
-        )
+        builder = PromptBuilder().section("a", "A").section("b", "B").section("c", "C")
         assert builder.section_names() == ["a", "b", "c"]

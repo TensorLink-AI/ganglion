@@ -30,9 +30,7 @@ class ToolRegistry:
     ) -> None:
         """Register a tool at runtime."""
         if name in self._tools:
-            raise ToolAlreadyRegisteredError(
-                f"Tool '{name}' already registered. Unregister first."
-            )
+            raise ToolAlreadyRegisteredError(f"Tool '{name}' already registered. Unregister first.")
         self._tools[name] = ToolDef(
             name=name,
             description=description,

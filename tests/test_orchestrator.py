@@ -56,6 +56,7 @@ class FailAgent(BaseAgentWrapper):
 
 class ConditionalAgent(BaseAgentWrapper):
     """Agent that succeeds on the Nth attempt."""
+
     _attempt_count = 0
 
     def build_system_prompt(self, task):
@@ -106,8 +107,10 @@ class TestPipelineOrchestrator:
             stages=[
                 StageDef(name="plan", agent="SuccessAgent", output_keys=["output"]),
                 StageDef(
-                    name="train", agent="SuccessAgent",
-                    depends_on=["plan"], input_keys=["output"],
+                    name="train",
+                    agent="SuccessAgent",
+                    depends_on=["plan"],
+                    input_keys=["output"],
                 ),
             ],
         )
@@ -143,8 +146,10 @@ class TestPipelineOrchestrator:
             stages=[
                 StageDef(name="step1", agent="FailAgent"),
                 StageDef(
-                    name="step2", agent="SuccessAgent",
-                    depends_on=["step1"], is_optional=True,
+                    name="step2",
+                    agent="SuccessAgent",
+                    depends_on=["step1"],
+                    is_optional=True,
                 ),
                 StageDef(name="step3", agent="SuccessAgent"),
             ],
@@ -222,5 +227,6 @@ class TestPipelineOrchestrator:
             agents={"A": SuccessAgent, "B": SuccessAgent},
         )
         from ganglion.orchestration.errors import PipelineValidationError
+
         with pytest.raises(PipelineValidationError):
             await orchestrator.run(TaskContext(make_config()))

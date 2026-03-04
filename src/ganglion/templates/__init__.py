@@ -48,7 +48,7 @@ class SubnetTemplate:
             meta_str = repr(meta) if meta else "{}"
             tasks_lines.append(
                 f'    "{tname}": TaskDef(name="{tname}",'
-                f' weight={tdef.get("weight", 1.0)}, metadata={meta_str}),'
+                f" weight={tdef.get('weight', 1.0)}, metadata={meta_str}),"
             )
 
         constraints_str = repr(self.constraints) if self.constraints else "{}"
@@ -140,20 +140,15 @@ If you cannot make progress, call finish(success=false, summary="...").
         """Render constraints as markdown list."""
         if not self.constraints:
             return "None specified."
-        return "\n".join(
-            f"- **{k}**: {v}" for k, v in self.constraints.items()
-        )
+        return "\n".join(f"- **{k}**: {v}" for k, v in self.constraints.items())
 
     def _render_metrics_list(self) -> str:
         """Render metrics as markdown list."""
         lines = []
         for m in self.metrics:
-            weight = m.get('weight', 1.0)
-            desc = m.get('description', '')
-            lines.append(
-                f"- **{m['name']}** ({m['direction']},"
-                f" weight={weight}): {desc}"
-            )
+            weight = m.get("weight", 1.0)
+            desc = m.get("description", "")
+            lines.append(f"- **{m['name']}** ({m['direction']}, weight={weight}): {desc}")
         return "\n".join(lines)
 
     def render_skill_md(self) -> str:
@@ -173,7 +168,7 @@ If you cannot make progress, call finish(success=false, summary="...").
             f" for mining {self.name} (netuid {self.netuid})"
             f" with Ganglion."
         )
-        return f'''---
+        return f"""---
 name: ganglion-{self.slug}
 description: {desc}
 homepage: https://github.com/TensorLink-AI/ganglion
@@ -220,7 +215,7 @@ Remote mode (separate server):
 ## Constraints
 
 {self._render_constraints()}
-'''
+"""
 
     def scaffold(self, target: Path) -> list[str]:
         """Write all files to the target directory. Returns list of created paths."""
@@ -286,8 +281,10 @@ GENERIC_TEMPLATE = SubnetTemplate(
     slug="my-subnet",
     metrics=[
         {
-            "name": "score", "direction": "maximize",
-            "weight": 1.0, "description": "Primary scoring metric",
+            "name": "score",
+            "direction": "maximize",
+            "weight": 1.0,
+            "description": "Primary scoring metric",
         },
     ],
     tasks={
@@ -321,6 +318,7 @@ def get_template(subnet: str) -> SubnetTemplate:
 
     # Return generic with the subnet name filled in
     from dataclasses import replace
+
     return replace(
         GENERIC_TEMPLATE,
         name=subnet,

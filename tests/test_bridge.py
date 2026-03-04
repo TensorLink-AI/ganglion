@@ -160,12 +160,16 @@ class TestMutationEndpoints:
             return mock_result
 
         import ganglion.bridge.server as srv
+
         srv._state.write_and_register_tool = mock_write
 
-        response = client.post("/v1/tools", json={
-            "name": "bad_tool",
-            "code": "def bad(): pass",
-        })
+        response = client.post(
+            "/v1/tools",
+            json={
+                "name": "bad_tool",
+                "code": "def bad(): pass",
+            },
+        )
         assert response.status_code == 400
         data = response.json()
         assert "error" in data["detail"]
@@ -179,31 +183,41 @@ class TestMutationEndpoints:
             return mock_result
 
         import ganglion.bridge.server as srv
+
         srv._state.write_and_register_tool = mock_write
 
-        response = client.post("/v1/tools", json={
-            "name": "good_tool",
-            "code": (
-                "@tool('good_tool')\n"
-                "def good_tool(x: int) -> str:\n"
-                "    '''doc'''\n"
-                "    return str(x)"
-            ),
-        })
+        response = client.post(
+            "/v1/tools",
+            json={
+                "name": "good_tool",
+                "code": (
+                    "@tool('good_tool')\n"
+                    "def good_tool(x: int) -> str:\n"
+                    "    '''doc'''\n"
+                    "    return str(x)"
+                ),
+            },
+        )
         assert response.status_code == 201
 
 
 class TestInputValidation:
     def test_empty_tool_name_rejected(self, client):
-        response = client.post("/v1/tools", json={
-            "name": "",
-            "code": "some code",
-        })
+        response = client.post(
+            "/v1/tools",
+            json={
+                "name": "",
+                "code": "some code",
+            },
+        )
         assert response.status_code == 422
 
     def test_empty_code_rejected(self, client):
-        response = client.post("/v1/tools", json={
-            "name": "tool",
-            "code": "",
-        })
+        response = client.post(
+            "/v1/tools",
+            json={
+                "name": "tool",
+                "code": "",
+            },
+        )
         assert response.status_code == 422

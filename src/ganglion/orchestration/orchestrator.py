@@ -114,9 +114,7 @@ class PipelineOrchestrator:
         """Execute all stages in dependency order."""
         errors = self.pipeline.validate()
         if errors:
-            raise PipelineValidationError(
-                f"Pipeline validation failed: {'; '.join(errors)}"
-            )
+            raise PipelineValidationError(f"Pipeline validation failed: {'; '.join(errors)}")
 
         self.emit(PipelineStarted(pipeline_name=self.pipeline.name))
 
@@ -128,15 +126,16 @@ class PipelineOrchestrator:
 
             # Check dependencies
             failed_deps = [
-                d for d in stage_def.depends_on
-                if d in results and not results[d].success
+                d for d in stage_def.depends_on if d in results and not results[d].success
             ]
             if failed_deps:
                 if stage_def.is_optional:
-                    self.emit(StageSkipped(
-                        stage=stage_def.name,
-                        reason=f"Failed deps: {failed_deps}",
-                    ))
+                    self.emit(
+                        StageSkipped(
+                            stage=stage_def.name,
+                            reason=f"Failed deps: {failed_deps}",
+                        )
+                    )
                     results[stage_def.name] = StageResult(
                         success=False,
                         error=f"Skipped: deps failed {failed_deps}",
@@ -149,10 +148,12 @@ class PipelineOrchestrator:
                         reason=f"Dependencies failed: {failed_deps}",
                         results=results,
                     )
-                    self.emit(PipelineCompleted(
-                        pipeline_name=self.pipeline.name,
-                        success=False,
-                    ))
+                    self.emit(
+                        PipelineCompleted(
+                            pipeline_name=self.pipeline.name,
+                            success=False,
+                        )
+                    )
                     return result
 
             # Execute with retry
@@ -174,19 +175,19 @@ class PipelineOrchestrator:
                     reason=stage_result.error,
                     results=results,
                 )
-                self.emit(PipelineCompleted(
-                    pipeline_name=self.pipeline.name,
-                    success=False,
-                ))
+                self.emit(
+                    PipelineCompleted(
+                        pipeline_name=self.pipeline.name,
+                        success=False,
+                    )
+                )
                 return result
 
         result = PipelineResult(success=True, results=results)
         self.emit(PipelineCompleted(pipeline_name=self.pipeline.name, success=True))
         return result
 
-    async def _execute_stage(
-        self, stage_def: StageDef, task: TaskContext
-    ) -> StageResult:
+    async def _execute_stage(self, stage_def: StageDef, task: TaskContext) -> StageResult:
         """Run a single stage, delegating retry to the RetryPolicy."""
         agent_cls = self._resolve_agent(stage_def.agent)
         if agent_cls is None:
@@ -205,15 +206,15 @@ class PipelineOrchestrator:
                 attempt_config = policy.configure_attempt(attempt, last_result)
                 if attempt_config is None:
                     break
-                if hasattr(attempt_config, 'agent_kwargs'):
+                if hasattr(attempt_config, "agent_kwargs"):
                     agent_kwargs = attempt_config.agent_kwargs.copy()
                 else:
                     agent_kwargs = {}
-                if hasattr(attempt_config, 'temperature'):
+                if hasattr(attempt_config, "temperature"):
                     agent_kwargs["temperature"] = attempt_config.temperature
-                if hasattr(attempt_config, 'model') and attempt_config.model:
+                if hasattr(attempt_config, "model") and attempt_config.model:
                     agent_kwargs["model"] = attempt_config.model
-                extra = getattr(attempt_config, 'extra_system_context', None)
+                extra = getattr(attempt_config, "extra_system_context", None)
                 if extra:
                     agent_kwargs["extra_system_context"] = attempt_config.extra_system_context
             else:
@@ -244,25 +245,25 @@ class PipelineOrchestrator:
                 if result.success:
                     # Record success to knowledge store
                     await self._record_knowledge(stage_def, result, task, success=True)
-                    return StageResult(
-                        success=True, result=result, attempts=attempt + 1
-                    )
+                    return StageResult(success=True, result=result, attempts=attempt + 1)
             except Exception as e:
                 logger.error(
                     "Stage '%s' attempt %d raised: %s",
-                    stage_def.name, attempt + 1, e,
+                    stage_def.name,
+                    attempt + 1,
+                    e,
                     exc_info=True,
                 )
-                last_result = AgentResult(
-                    success=False, raw_text=str(e), turns_used=0
-                )
+                last_result = AgentResult(success=False, raw_text=str(e), turns_used=0)
 
             attempt += 1
             if policy is not None:
-                self.emit(StageRetry(
-                    stage=stage_def.name,
-                    attempt=attempt,
-                ))
+                self.emit(
+                    StageRetry(
+                        stage=stage_def.name,
+                        attempt=attempt,
+                    )
+                )
 
         # All retries exhausted
         await self._record_knowledge(stage_def, last_result, task, success=False)
@@ -290,10 +291,7 @@ class PipelineOrchestrator:
 
         try:
             structured = result.structured
-            config = (
-                structured.get("config")
-                if isinstance(structured, dict) else None
-            )
+            config = structured.get("config") if isinstance(structured, dict) else None
             if success:
                 metrics = task.subnet_config.metrics
                 await self.knowledge.record_success(

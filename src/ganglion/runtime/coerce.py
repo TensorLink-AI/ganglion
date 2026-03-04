@@ -20,7 +20,7 @@ def coerce_json_strings(
     stripped = value.strip()
     if not stripped:
         return value, False
-    if stripped[0] in ('{', '[', '"') or stripped in ('true', 'false', 'null'):
+    if stripped[0] in ("{", "[", '"') or stripped in ("true", "false", "null"):
         try:
             parsed = json.loads(stripped)
             logger.debug("Coerced JSON string for arg '%s': %r -> %r", arg_name, value, parsed)

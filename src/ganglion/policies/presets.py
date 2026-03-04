@@ -16,9 +16,9 @@ SN50_PRESET = {
         base_temp=0.1,
         temp_step=0.1,
         stall_detector=ConfigComparisonStallDetector(
-            extract_config=lambda r: r.structured.get("config", {})
-            if isinstance(r.structured, dict)
-            else {},
+            extract_config=lambda r: (
+                r.structured.get("config", {}) if isinstance(r.structured, dict) else {}
+            ),
         ),
     ),
 }

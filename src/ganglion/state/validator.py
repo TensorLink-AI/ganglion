@@ -53,9 +53,7 @@ class MutationValidator:
                         has_tool_decorator = True
                         for arg in node.args.args:
                             if arg.annotation is None and arg.arg != "self":
-                                errors.append(
-                                    f"Parameter '{arg.arg}' missing type hint"
-                                )
+                                errors.append(f"Parameter '{arg.arg}' missing type hint")
 
                 if not ast.get_docstring(node):
                     errors.append(f"Function '{node.name}' missing docstring")
@@ -80,9 +78,7 @@ class MutationValidator:
         has_agent_class = False
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
-                base_names = [
-                    getattr(b, "id", getattr(b, "attr", "")) for b in node.bases
-                ]
+                base_names = [getattr(b, "id", getattr(b, "attr", "")) for b in node.bases]
                 if "BaseAgentWrapper" in base_names:
                     has_agent_class = True
                     methods = {
@@ -122,9 +118,7 @@ class MutationValidator:
                 for alias in node.names:
                     full_name = f"{module}.{alias.name}" if module else alias.name
                     for blocked in self.blocked_imports:
-                        if full_name.startswith(blocked) or module.startswith(
-                            blocked
-                        ):
+                        if full_name.startswith(blocked) or module.startswith(blocked):
                             errors.append(f"Blocked import: {full_name}")
                             break
         return errors

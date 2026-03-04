@@ -42,16 +42,18 @@ class KnowledgeStore:
         run_id: str | None = None,
     ) -> None:
         """Record a strategy that worked."""
-        await self.backend.save_pattern(Pattern(
-            capability=capability,
-            description=description,
-            config=config,
-            metric_value=metric_value,
-            metric_name=metric_name,
-            stage=stage,
-            run_id=run_id,
-            source_bot=self.bot_id,
-        ))
+        await self.backend.save_pattern(
+            Pattern(
+                capability=capability,
+                description=description,
+                config=config,
+                metric_value=metric_value,
+                metric_name=metric_name,
+                stage=stage,
+                run_id=run_id,
+                source_bot=self.bot_id,
+            )
+        )
 
     async def record_failure(
         self,
@@ -63,15 +65,17 @@ class KnowledgeStore:
         run_id: str | None = None,
     ) -> None:
         """Record a strategy that failed."""
-        await self.backend.save_antipattern(Antipattern(
-            capability=capability,
-            error_summary=error_summary[:500],
-            config=config,
-            failure_mode=failure_mode,
-            stage=stage,
-            run_id=run_id,
-            source_bot=self.bot_id,
-        ))
+        await self.backend.save_antipattern(
+            Antipattern(
+                capability=capability,
+                error_summary=error_summary[:500],
+                config=config,
+                failure_mode=failure_mode,
+                stage=stage,
+                run_id=run_id,
+                source_bot=self.bot_id,
+            )
+        )
 
     async def to_prompt_context(
         self,

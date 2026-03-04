@@ -48,7 +48,7 @@ class FederatedKnowledgeBackend:
             merged = [p for p in merged if p.source_bot != query.exclude_source]
 
         merged.sort(key=lambda p: p.timestamp, reverse=True)
-        return merged[:query.max_entries]
+        return merged[: query.max_entries]
 
     async def query_antipatterns(self, query: KnowledgeQuery) -> list[Antipattern]:
         local_results = await self.local.query_antipatterns(query)
@@ -64,7 +64,7 @@ class FederatedKnowledgeBackend:
             merged = [a for a in merged if a.source_bot != query.exclude_source]
 
         merged.sort(key=lambda a: a.timestamp, reverse=True)
-        return merged[:query.max_entries]
+        return merged[: query.max_entries]
 
     async def count(self) -> dict[str, int]:
         return await self.local.count()

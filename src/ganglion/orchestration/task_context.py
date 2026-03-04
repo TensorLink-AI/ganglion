@@ -91,8 +91,10 @@ class SubnetConfig:
             "name": self.name,
             "metrics": [
                 {
-                    "name": m.name, "direction": m.direction,
-                    "weight": m.weight, "description": m.description,
+                    "name": m.name,
+                    "direction": m.direction,
+                    "weight": m.weight,
+                    "description": m.description,
                 }
                 for m in self.metrics
             ],
@@ -168,7 +170,9 @@ class TaskContext:
                     "written_at": self._metadata[k].written_at.isoformat(),
                     "description": self._metadata[k].description,
                     "value_type": self._metadata[k].value_type,
-                } if k in self._metadata else None,
+                }
+                if k in self._metadata
+                else None,
             }
             for k, v in self._data.items()
         }
