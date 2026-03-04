@@ -22,6 +22,9 @@ dev = [
     "pytest-asyncio>=0.21",
 ]
 
+[project.scripts]
+ganglion = "ganglion.__main__:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/ganglion"]
 
