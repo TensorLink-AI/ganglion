@@ -54,6 +54,7 @@ class MCPClientBridge:
             elif self.config.transport == "sse":
                 await self._connect_sse()
 
+            assert self.session is not None
             await self.session.initialize()
             await self._discover_tools()
             return list(self._tools.values())
@@ -91,12 +92,14 @@ class MCPClientBridge:
                 "SSE transport requires additional dependencies from the mcp package"
             ) from e
 
+        assert self.config.url is not None
         transport = await self._exit_stack.enter_async_context(sse_client(self.config.url))
         read, write = transport
         self.session = await self._exit_stack.enter_async_context(ClientSession(read, write))
 
     async def _discover_tools(self) -> None:
         """List tools from the MCP server and create ToolDef wrappers."""
+        assert self.session is not None
         result = await self.session.list_tools()
         prefix = self.config.tool_prefix or self.config.name
 
