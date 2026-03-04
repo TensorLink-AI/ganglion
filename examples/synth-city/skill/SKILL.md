@@ -1,6 +1,7 @@
 ---
 name: ganglion-synth-city
 description: "Mine Bittensor Subnet 50 (Synth) with Ganglion.  Covers price-path simulation, CRPS scoring, volatility estimation, backtesting, and multi-asset forecasting."
+homepage: https://github.com/TensorLink-AI/ganglion
 metadata: {"openclaw": {"emoji": "\u26d3", "requires": {"anyBins": ["ganglion", "curl"]}, "always": false}}
 ---
 
