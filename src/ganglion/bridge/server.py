@@ -126,7 +126,10 @@ def _get_state() -> FrameworkState:
     if _state is None:
         raise HTTPException(
             status_code=503,
-            detail={"error": {"code": "NOT_CONFIGURED", "message": "Bridge not configured. Call configure() first."}},
+            detail={"error": {
+                "code": "NOT_CONFIGURED",
+                "message": "Bridge not configured. Call configure() first.",
+            }},
         )
     return _state
 
@@ -310,7 +313,13 @@ async def get_source(path: str):
     except (OSError, ValueError):
         _error_response("INVALID_PATH", "Invalid path")
     if not full_path.exists():
-        raise HTTPException(status_code=404, detail={"error": {"code": "NOT_FOUND", "message": f"Not found: {path}"}})
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {
+                "code": "NOT_FOUND",
+                "message": f"Not found: {path}",
+            }},
+        )
     try:
         content = full_path.read_text()
     except OSError as exc:

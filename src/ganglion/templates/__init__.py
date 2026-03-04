@@ -47,7 +47,8 @@ class SubnetTemplate:
             meta = tdef.get("metadata", {})
             meta_str = repr(meta) if meta else "{}"
             tasks_lines.append(
-                f'    "{tname}": TaskDef(name="{tname}", weight={tdef.get("weight", 1.0)}, metadata={meta_str}),'
+                f'    "{tname}": TaskDef(name="{tname}",'
+                f' weight={tdef.get("weight", 1.0)}, metadata={meta_str}),'
             )
 
         constraints_str = repr(self.constraints) if self.constraints else "{}"
@@ -135,6 +136,26 @@ If you cannot make progress, call finish(success=false, summary="...").
         """Return the tool code (already complete)."""
         return code
 
+    def _render_constraints(self) -> str:
+        """Render constraints as markdown list."""
+        if not self.constraints:
+            return "None specified."
+        return "\n".join(
+            f"- **{k}**: {v}" for k, v in self.constraints.items()
+        )
+
+    def _render_metrics_list(self) -> str:
+        """Render metrics as markdown list."""
+        lines = []
+        for m in self.metrics:
+            weight = m.get('weight', 1.0)
+            desc = m.get('description', '')
+            lines.append(
+                f"- **{m['name']}** ({m['direction']},"
+                f" weight={weight}): {desc}"
+            )
+        return "\n".join(lines)
+
     def render_skill_md(self) -> str:
         """Render a subnet-specific SKILL.md for Claw Hub."""
         strategies_section = ""
@@ -147,9 +168,14 @@ If you cannot make progress, call finish(success=false, summary="...").
             items = "\n".join(f"- {p}" for p in self.known_pitfalls)
             pitfalls_section = f"\n## Known pitfalls\n\n{items}\n"
 
+        desc = (
+            f"Domain knowledge and bootstrap strategies"
+            f" for mining {self.name} (netuid {self.netuid})"
+            f" with Ganglion."
+        )
         return f'''---
 name: ganglion-{self.slug}
-description: Domain knowledge and bootstrap strategies for mining {self.name} (netuid {self.netuid}) with Ganglion.
+description: {desc}
 homepage: https://github.com/TensorLink-AI/ganglion
 metadata: {{"openclaw":{{"emoji":"\\u26d3","requires":{{"anyBins":["ganglion","curl"]}}}}}}
 ---
@@ -167,7 +193,7 @@ Responses use a standard envelope: `{{"data": <payload>}}` on success.
 
 The validator scores miners on:
 
-{chr(10).join(f"- **{m['name']}** ({m['direction']}, weight={m.get('weight', 1.0)}): {m.get('description', '')}" for m in self.metrics)}
+{self._render_metrics_list()}
 
 ## Output format
 
@@ -193,7 +219,7 @@ Remote mode (separate server):
 
 ## Constraints
 
-{chr(10).join(f"- **{k}**: {v}" for k, v in self.constraints.items()) if self.constraints else "None specified."}
+{self._render_constraints()}
 '''
 
     def scaffold(self, target: Path) -> list[str]:
@@ -259,7 +285,10 @@ GENERIC_TEMPLATE = SubnetTemplate(
     name="My Subnet",
     slug="my-subnet",
     metrics=[
-        {"name": "score", "direction": "maximize", "weight": 1.0, "description": "Primary scoring metric"},
+        {
+            "name": "score", "direction": "maximize",
+            "weight": 1.0, "description": "Primary scoring metric",
+        },
     ],
     tasks={
         "default": {"weight": 1.0},

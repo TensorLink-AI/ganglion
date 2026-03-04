@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from ganglion.composition.tool_registry import ToolDef
 from ganglion.orchestration.errors import ToolAlreadyRegisteredError, ToolNotFoundError

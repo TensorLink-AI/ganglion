@@ -69,9 +69,8 @@ class PipelineDef:
                     )
 
         # Check for cycles (topological sort)
-        if not errors:
-            if self._has_cycle():
-                errors.append("Dependency graph contains a cycle")
+        if not errors and self._has_cycle():
+            errors.append("Dependency graph contains a cycle")
 
         # Check input_keys are produced by upstream output_keys
         if not errors:
@@ -170,26 +169,25 @@ class PipelineDef:
         adjacency: dict[str, list[str]] = {
             stage.name: list(stage.depends_on) for stage in self.stages
         }
-        UNVISITED, IN_PROGRESS, VISITED = 0, 1, 2
-        visit_state: dict[str, int] = {name: UNVISITED for name in adjacency}
+        unvisited, in_progress, visited = 0, 1, 2
+        visit_state: dict[str, int] = {name: unvisited for name in adjacency}
 
         def dfs(node: str) -> bool:
-            visit_state[node] = IN_PROGRESS
+            visit_state[node] = in_progress
             for dep in adjacency.get(node, []):
                 if dep not in visit_state:
                     continue
-                if visit_state[dep] == IN_PROGRESS:
+                if visit_state[dep] == in_progress:
                     return True
-                if visit_state[dep] == UNVISITED and dfs(dep):
+                if visit_state[dep] == unvisited and dfs(dep):
                     return True
-            visit_state[node] = VISITED
+            visit_state[node] = visited
             return False
 
-        for node in adjacency:
-            if visit_state[node] == UNVISITED:
-                if dfs(node):
-                    return True
-        return False
+        return any(
+            visit_state[node] == unvisited and dfs(node)
+            for node in adjacency
+        )
 
     def _topological_order(self) -> list[StageDef]:
         """Return stages in topological (dependency) order."""

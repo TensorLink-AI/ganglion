@@ -75,7 +75,8 @@ class SqliteKnowledgeBackend:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO patterns
-                   (capability, description, config, metric_value, metric_name, stage, timestamp, run_id, source_bot)
+                   (capability, description, config, metric_value,
+                    metric_name, stage, timestamp, run_id, source_bot)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     pattern.capability,
@@ -94,7 +95,8 @@ class SqliteKnowledgeBackend:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO antipatterns
-                   (capability, error_summary, config, failure_mode, stage, timestamp, run_id, source_bot)
+                   (capability, error_summary, config, failure_mode,
+                    stage, timestamp, run_id, source_bot)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     antipattern.capability,

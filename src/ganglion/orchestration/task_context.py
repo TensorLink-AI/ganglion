@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 _SENTINEL = object()
 
@@ -89,7 +90,10 @@ class SubnetConfig:
             "netuid": self.netuid,
             "name": self.name,
             "metrics": [
-                {"name": m.name, "direction": m.direction, "weight": m.weight, "description": m.description}
+                {
+                    "name": m.name, "direction": m.direction,
+                    "weight": m.weight, "description": m.description,
+                }
                 for m in self.metrics
             ],
             "tasks": {

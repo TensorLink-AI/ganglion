@@ -107,7 +107,10 @@ class GanglionConfig:
         if self.rate_limit_requests_per_minute < 1:
             errors.append("GANGLION_RATE_LIMIT_RPM must be >= 1")
         if self.log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
-            errors.append(f"GANGLION_LOG_LEVEL must be one of DEBUG/INFO/WARNING/ERROR/CRITICAL, got '{self.log_level}'")
+            errors.append(
+                "GANGLION_LOG_LEVEL must be one of"
+                f" DEBUG/INFO/WARNING/ERROR/CRITICAL, got '{self.log_level}'"
+            )
         if self.max_request_body_bytes < 1024:
             errors.append("GANGLION_MAX_REQUEST_BODY_BYTES must be >= 1024")
 

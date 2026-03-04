@@ -204,22 +204,41 @@ class TestMultiBotSharedKnowledge:
         """query_patterns with exclude_source filters correctly."""
         backend = JsonKnowledgeBackend(tmp_dir / "knowledge")
 
-        await backend.save_pattern(Pattern(capability="train", description="From alpha", source_bot="alpha"))
-        await backend.save_pattern(Pattern(capability="train", description="From beta", source_bot="beta"))
-        await backend.save_pattern(Pattern(capability="train", description="From nobody", source_bot=None))
+        await backend.save_pattern(Pattern(
+            capability="train", description="From alpha",
+            source_bot="alpha",
+        ))
+        await backend.save_pattern(Pattern(
+            capability="train", description="From beta",
+            source_bot="beta",
+        ))
+        await backend.save_pattern(Pattern(
+            capability="train", description="From nobody",
+            source_bot=None,
+        ))
 
         # Exclude alpha — should get beta's and untagged entries
-        results = await backend.query_patterns(KnowledgeQuery(capability="train", exclude_source="alpha"))
+        results = await backend.query_patterns(
+            KnowledgeQuery(capability="train", exclude_source="alpha"),
+        )
         descriptions = {r.description for r in results}
         assert "From beta" in descriptions
         assert "From nobody" in descriptions
         assert "From alpha" not in descriptions
 
         # Same for antipatterns
-        await backend.save_antipattern(Antipattern(capability="train", error_summary="Alpha fail", source_bot="alpha"))
-        await backend.save_antipattern(Antipattern(capability="train", error_summary="Beta fail", source_bot="beta"))
+        await backend.save_antipattern(Antipattern(
+            capability="train", error_summary="Alpha fail",
+            source_bot="alpha",
+        ))
+        await backend.save_antipattern(Antipattern(
+            capability="train", error_summary="Beta fail",
+            source_bot="beta",
+        ))
 
-        results = await backend.query_antipatterns(KnowledgeQuery(capability="train", exclude_source="alpha"))
+        results = await backend.query_antipatterns(
+            KnowledgeQuery(capability="train", exclude_source="alpha"),
+        )
         summaries = {r.error_summary for r in results}
         assert "Beta fail" in summaries
         assert "Alpha fail" not in summaries
@@ -228,10 +247,18 @@ class TestMultiBotSharedKnowledge:
         """query_patterns without exclude_source returns everything."""
         backend = JsonKnowledgeBackend(tmp_dir / "knowledge")
 
-        await backend.save_pattern(Pattern(capability="train", description="From alpha", source_bot="alpha"))
-        await backend.save_pattern(Pattern(capability="train", description="From beta", source_bot="beta"))
+        await backend.save_pattern(Pattern(
+            capability="train", description="From alpha",
+            source_bot="alpha",
+        ))
+        await backend.save_pattern(Pattern(
+            capability="train", description="From beta",
+            source_bot="beta",
+        ))
 
-        results = await backend.query_patterns(KnowledgeQuery(capability="train"))
+        results = await backend.query_patterns(
+            KnowledgeQuery(capability="train"),
+        )
         assert len(results) == 2
 
     async def test_foreign_prompt_context(self, tmp_dir):
@@ -240,12 +267,23 @@ class TestMultiBotSharedKnowledge:
         store = KnowledgeStore(backend=backend, bot_id="alpha")
 
         # Alpha records its own knowledge
-        await store.record_success(capability="train", description="Alpha's approach", metric_value=0.9, metric_name="acc")
-        await store.record_failure(capability="train", error_summary="Alpha's mistake")
+        await store.record_success(
+            capability="train", description="Alpha's approach",
+            metric_value=0.9, metric_name="acc",
+        )
+        await store.record_failure(
+            capability="train", error_summary="Alpha's mistake",
+        )
 
         # Manually add entries from beta
-        await backend.save_pattern(Pattern(capability="train", description="Beta's approach", source_bot="beta", metric_value=0.8, metric_name="acc"))
-        await backend.save_antipattern(Antipattern(capability="train", error_summary="Beta's mistake", source_bot="beta", failure_mode="oom"))
+        await backend.save_pattern(Pattern(
+            capability="train", description="Beta's approach",
+            source_bot="beta", metric_value=0.8, metric_name="acc",
+        ))
+        await backend.save_antipattern(Antipattern(
+            capability="train", error_summary="Beta's mistake",
+            source_bot="beta", failure_mode="oom",
+        ))
 
         ctx = await store.to_foreign_prompt_context("train")
         assert "Discoveries from other bots" in ctx
@@ -262,21 +300,26 @@ class TestMultiBotSharedKnowledge:
         backend = JsonKnowledgeBackend(tmp_dir / "knowledge")
         store = KnowledgeStore(backend=backend)
 
-        await backend.save_pattern(Pattern(capability="train", description="Some approach", source_bot="beta"))
+        await backend.save_pattern(Pattern(
+            capability="train", description="Some approach",
+            source_bot="beta",
+        ))
 
         ctx = await store.to_foreign_prompt_context("train")
         assert ctx == ""
 
     async def test_shared_backend_two_stores(self, tmp_dir):
-        """Two KnowledgeStore instances with different bot_ids on same backend
-        can read each other's entries via to_foreign_prompt_context but not via to_prompt_context."""
+        """Two KnowledgeStore instances with different bot_ids on
+        same backend can read each other's entries via
+        to_foreign_prompt_context but not via to_prompt_context."""
         backend = JsonKnowledgeBackend(tmp_dir / "knowledge")
         store_alpha = KnowledgeStore(backend=backend, bot_id="alpha")
         store_beta = KnowledgeStore(backend=backend, bot_id="beta")
 
         # Alpha records a success
         await store_alpha.record_success(
-            capability="train", description="Alpha discovered X", metric_value=0.9, metric_name="acc",
+            capability="train", description="Alpha discovered X",
+            metric_value=0.9, metric_name="acc",
         )
         # Beta records a failure
         await store_beta.record_failure(
@@ -301,22 +344,41 @@ class TestMultiBotSharedKnowledge:
         """SQLite backend also respects exclude_source filtering."""
         backend = SqliteKnowledgeBackend(tmp_dir / "knowledge.db")
 
-        await backend.save_pattern(Pattern(capability="train", description="From alpha", source_bot="alpha"))
-        await backend.save_pattern(Pattern(capability="train", description="From beta", source_bot="beta"))
-        await backend.save_pattern(Pattern(capability="train", description="From nobody", source_bot=None))
+        await backend.save_pattern(Pattern(
+            capability="train", description="From alpha",
+            source_bot="alpha",
+        ))
+        await backend.save_pattern(Pattern(
+            capability="train", description="From beta",
+            source_bot="beta",
+        ))
+        await backend.save_pattern(Pattern(
+            capability="train", description="From nobody",
+            source_bot=None,
+        ))
 
         # Exclude alpha
-        results = await backend.query_patterns(KnowledgeQuery(capability="train", exclude_source="alpha"))
+        results = await backend.query_patterns(
+            KnowledgeQuery(capability="train", exclude_source="alpha"),
+        )
         descriptions = {r.description for r in results}
         assert "From beta" in descriptions
         assert "From nobody" in descriptions
         assert "From alpha" not in descriptions
 
         # Antipatterns too
-        await backend.save_antipattern(Antipattern(capability="train", error_summary="Alpha fail", source_bot="alpha"))
-        await backend.save_antipattern(Antipattern(capability="train", error_summary="Beta fail", source_bot="beta"))
+        await backend.save_antipattern(Antipattern(
+            capability="train", error_summary="Alpha fail",
+            source_bot="alpha",
+        ))
+        await backend.save_antipattern(Antipattern(
+            capability="train", error_summary="Beta fail",
+            source_bot="beta",
+        ))
 
-        results = await backend.query_antipatterns(KnowledgeQuery(capability="train", exclude_source="alpha"))
+        results = await backend.query_antipatterns(
+            KnowledgeQuery(capability="train", exclude_source="alpha"),
+        )
         summaries = {r.error_summary for r in results}
         assert "Beta fail" in summaries
         assert "Alpha fail" not in summaries
@@ -440,8 +502,14 @@ class TestFederatedKnowledgeBackend:
         alpha_backend = JsonKnowledgeBackend(base_dir / "alpha")
         beta_backend = JsonKnowledgeBackend(base_dir / "beta")
 
-        await alpha_backend.save_pattern(Pattern(capability="train", description="Alpha", source_bot="alpha"))
-        await beta_backend.save_pattern(Pattern(capability="train", description="Beta", source_bot="beta"))
+        await alpha_backend.save_pattern(Pattern(
+            capability="train", description="Alpha",
+            source_bot="alpha",
+        ))
+        await beta_backend.save_pattern(Pattern(
+            capability="train", description="Beta",
+            source_bot="beta",
+        ))
 
         # Alpha's peer discovery should only find beta
         discovery = FilesystemPeerDiscovery(base_dir, "alpha")

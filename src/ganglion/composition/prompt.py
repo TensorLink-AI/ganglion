@@ -19,7 +19,7 @@ class PromptBuilder:
     def __init__(self) -> None:
         self._sections: list[tuple[str, str]] = []
 
-    def section(self, name: str, content: str) -> "PromptBuilder":
+    def section(self, name: str, content: str) -> PromptBuilder:
         """Add a named section to the prompt."""
         self._sections.append((name, content))
         return self
@@ -32,12 +32,12 @@ class PromptBuilder:
                 parts.append(f"## {name}\n{content}")
         return separator.join(parts)
 
-    def remove(self, name: str) -> "PromptBuilder":
+    def remove(self, name: str) -> PromptBuilder:
         """Remove all sections with the given name."""
         self._sections = [(n, c) for n, c in self._sections if n != name]
         return self
 
-    def replace(self, name: str, content: str) -> "PromptBuilder":
+    def replace(self, name: str, content: str) -> PromptBuilder:
         """Replace the first section with the given name, or append if not found."""
         for i, (n, _) in enumerate(self._sections):
             if n == name:

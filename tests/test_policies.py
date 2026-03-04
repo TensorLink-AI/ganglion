@@ -16,8 +16,14 @@ from ganglion.policies.stall import (
 from ganglion.runtime.types import AgentResult
 
 
-def make_result(success: bool = False, structured: dict | None = None, raw_text: str = "") -> AgentResult:
-    return AgentResult(success=success, structured=structured, raw_text=raw_text)
+def make_result(
+    success: bool = False,
+    structured: dict | None = None,
+    raw_text: str = "",
+) -> AgentResult:
+    return AgentResult(
+        success=success, structured=structured, raw_text=raw_text,
+    )
 
 
 class TestNoRetry:

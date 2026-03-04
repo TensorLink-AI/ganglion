@@ -403,7 +403,10 @@ class FrameworkState:
                 Mutation(
                     mutation_type="write_prompt",
                     target=f"{agent_name}/{prompt_section}",
-                    description=f"Updated prompt section '{prompt_section}' for agent '{agent_name}'",
+                    description=(
+                        f"Updated prompt section '{prompt_section}'"
+                        f" for agent '{agent_name}'"
+                    ),
                     diff=content,
                     rollback_data={"path": str(path), "previous": previous},
                 )

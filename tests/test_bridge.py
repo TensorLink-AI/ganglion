@@ -183,7 +183,12 @@ class TestMutationEndpoints:
 
         response = client.post("/v1/tools", json={
             "name": "good_tool",
-            "code": "@tool('good_tool')\ndef good_tool(x: int) -> str:\n    '''doc'''\n    return str(x)",
+            "code": (
+                "@tool('good_tool')\n"
+                "def good_tool(x: int) -> str:\n"
+                "    '''doc'''\n"
+                "    return str(x)"
+            ),
         })
         assert response.status_code == 201
 

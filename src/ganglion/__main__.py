@@ -209,7 +209,10 @@ def _run_init(args: argparse.Namespace) -> None:
     logger.info("Scaffolded project at %s", target.resolve())
     for path in created:
         logger.info("  Created: %s", path)
-    logger.info("Next: edit %s/config.py, then run: ganglion serve %s --bot-id my-bot", target, target)
+    logger.info(
+        "Next: edit %s/config.py, then run: ganglion serve %s --bot-id my-bot",
+        target, target,
+    )
 
 
 # ── serve ──────────────────────────────────────────────────
