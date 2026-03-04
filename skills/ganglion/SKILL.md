@@ -35,6 +35,10 @@ All remote (HTTP bridge) responses use a standard envelope:
 
 Use `jq .data` to extract the payload from successful responses.
 
+Interactive API docs are available at `$GANGLION_URL/v1/docs` (Swagger UI).
+
+> **Note:** Unversioned routes (e.g. `/status`, `/tools`) still work for backward compatibility but are deprecated. Always prefer the `/v1/` prefix.
+
 ## Setup
 
 **Local mode** — set the project path, no server required:
@@ -176,20 +180,20 @@ curl -s -X POST "$GANGLION_URL/v1/run/experiment" \
 
 Mutations require the HTTP bridge. Start the server first.
 
-Write and register a new tool:
+Write and register a new tool (optional `test_code` runs inline tests):
 
 ```
 curl -s -X POST "$GANGLION_URL/v1/tools" \
   -H "Content-Type: application/json" \
-  -d '{"name":"my_tool","code":"<tool code>","category":"training"}' | jq .data
+  -d '{"name":"my_tool","code":"<tool code>","category":"training","test_code":"<optional test code>"}' | jq .data
 ```
 
-Write and register a new agent:
+Write and register a new agent (optional `test_task` validates the agent):
 
 ```
 curl -s -X POST "$GANGLION_URL/v1/agents" \
   -H "Content-Type: application/json" \
-  -d '{"name":"MyAgent","code":"<agent class code>"}' | jq .data
+  -d '{"name":"MyAgent","code":"<agent class code>","test_task":{"input":"test"}}' | jq .data
 ```
 
 Write and register a new component:
