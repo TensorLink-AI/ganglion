@@ -141,6 +141,26 @@ def main(argv: list[str] | None = None) -> None:
         help="JSON string of overrides for the pipeline run",
     )
 
+    # ── mcp-serve ─────────────────────────────────────────
+    mcp_serve_parser = subparsers.add_parser(
+        "mcp-serve",
+        help="Run Ganglion as an MCP server (stdio transport for Claude Desktop)",
+    )
+    mcp_serve_parser.add_argument("project_dir", help=_project_help)
+    mcp_serve_parser.add_argument("--bot-id", default=None)
+    mcp_serve_parser.add_argument(
+        "--transport",
+        default="stdio",
+        choices=["stdio", "sse"],
+        help="MCP transport (default: stdio)",
+    )
+    mcp_serve_parser.add_argument(
+        "--mcp-port",
+        type=int,
+        default=8900,
+        help="Port for SSE transport (default: 8900)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -158,6 +178,7 @@ def main(argv: list[str] | None = None) -> None:
         "knowledge": _run_knowledge,
         "pipeline": _run_pipeline,
         "run": _run_run,
+        "mcp-serve": _run_mcp_serve,
     }
 
     handler = commands.get(args.command)
@@ -232,6 +253,10 @@ def _run_serve(args: argparse.Namespace) -> None:
     config.validate_or_raise()
 
     state = _load_state(args.project_dir, bot_id=args.bot_id)
+
+    # Connect to configured MCP servers before starting the HTTP bridge
+    _async_run(state.initialize_mcp())
+
     configure(state, config)
     setup_cors(config.cors_allowed_origins)
 
@@ -308,12 +333,42 @@ def _run_run(args: argparse.Namespace) -> None:
             logger.error("Invalid JSON for --overrides: %s", exc)
             sys.exit(1)
 
-    if args.stage:
-        result = _async_run(state.run_single_stage(args.stage, overrides))
-    else:
-        result = _async_run(state.run_pipeline(overrides=overrides))
+    async def _run_with_mcp() -> Any:
+        await state.initialize_mcp()
+        try:
+            if args.stage:
+                return await state.run_single_stage(args.stage, overrides)
+            return await state.run_pipeline(overrides=overrides)
+        finally:
+            await state.shutdown_mcp()
 
+    result = _async_run(_run_with_mcp())
     _print_json(result.to_dict())
+
+
+# ── mcp-serve ─────────────────────────────────────────────
+
+
+def _run_mcp_serve(args: argparse.Namespace) -> None:
+    state = _load_state(args.project_dir, bot_id=getattr(args, "bot_id", None))
+
+    async def _serve() -> None:
+        await state.initialize_mcp()
+        try:
+            from ganglion.mcp.server import MCPServerBridge
+
+            bridge = MCPServerBridge(
+                tool_registry=state.tool_registry,
+                server_name=f"ganglion-{state.subnet_config.name}",
+            )
+            if args.transport == "sse":
+                await bridge.run_sse(host="127.0.0.1", port=args.mcp_port)
+            else:
+                await bridge.run_stdio()
+        finally:
+            await state.shutdown_mcp()
+
+    _async_run(_serve())
 
 
 if __name__ == "__main__":

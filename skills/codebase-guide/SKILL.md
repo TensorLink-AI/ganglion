@@ -154,6 +154,29 @@ ganglion serve ./my-subnet --bot-id alpha --port 8899
 ganglion serve ./my-subnet --bot-id beta  --port 8900
 ```
 
+### MCP Integration
+Connect to external MCP servers to add tools to the agent's repertoire at runtime.
+Tools from MCP servers appear as regular Ganglion tools with a prefix.
+
+```bash
+# Static: add to config.py
+# from ganglion.mcp.config import MCPClientConfig
+# mcp_clients = [MCPClientConfig(name="weather", transport="stdio", command=["python", "-m", "weather_server"])]
+
+# Dynamic: add at runtime via API
+curl -s -X POST "$GANGLION_URL/v1/mcp/servers" -H "Content-Type: application/json" \
+  -d '{"name":"weather","transport":"stdio","command":["python","-m","weather_server"]}' | jq .data
+
+# Check connected MCP servers
+curl -s "$GANGLION_URL/v1/mcp" | jq .data
+
+# Disconnect
+curl -s -X DELETE "$GANGLION_URL/v1/mcp/servers/weather" | jq .data
+
+# Expose Ganglion tools as MCP server (for Claude Desktop etc.)
+ganglion mcp-serve ./my-subnet --transport stdio
+```
+
 ## Common Workflows
 
 See `{baseDir}/examples/common-workflows.md` for full step-by-step guides.
@@ -162,6 +185,7 @@ See `{baseDir}/examples/common-workflows.md` for full step-by-step guides.
 2. **Iterative mining**: check status → review knowledge → run pipeline → check metrics → repeat
 3. **Dynamic mutation**: observe tools/agents → register new tool via API → patch pipeline → run
 4. **Multi-bot setup**: start multiple servers with different `--bot-id` values on the same project
+5. **MCP integration**: connect external tool servers → tools appear in registry → agents can use them
 
 ## When Things Go Wrong
 

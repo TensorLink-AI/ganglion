@@ -59,6 +59,9 @@ from ganglion.orchestration.task_context import MetricDef, OutputSpec, SubnetCon
 from ganglion.orchestration.pipeline import PipelineDef, StageDef
 from ganglion.policies.retry import EscalatingRetry, FixedRetry
 
+# MCP — uncomment to connect to external tool servers
+# from ganglion.mcp.config import MCPClientConfig
+
 subnet_config = SubnetConfig(
     netuid={self.netuid},
     name="{self.name}",
@@ -101,6 +104,19 @@ pipeline = PipelineDef(
         ),
     ],
 )
+
+# MCP client connections (optional)
+# Uncomment and configure to connect to external MCP servers.
+# Their tools will be available to agents during pipeline execution.
+#
+# mcp_clients = [
+#     MCPClientConfig(
+#         name="example-server",
+#         transport="stdio",
+#         command=["python", "-m", "example_mcp_server"],
+#         tool_prefix="example",
+#     ),
+# ]
 '''
 
     def render_starter_agent(self) -> str:
@@ -215,6 +231,19 @@ Remote mode (separate server):
 ## Constraints
 
 {self._render_constraints()}
+
+## MCP Integration
+
+This subnet supports MCP (Model Context Protocol) for tool interoperability.
+
+**As a client:** Configure external MCP servers in `config.py` via `mcp_clients`.
+Tools from connected servers appear as regular Ganglion tools with a prefix.
+Clawbot can also add MCP servers at runtime via `POST /v1/mcp/servers`.
+
+**As a server:** Expose this subnet's tools via MCP for Claude Desktop or other clients:
+```bash
+ganglion mcp-serve ./{self.slug} --transport stdio
+```
 """
 
     def scaffold(self, target: Path) -> list[str]:

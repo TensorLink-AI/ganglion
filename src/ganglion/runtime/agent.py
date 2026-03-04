@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 from collections.abc import Callable
@@ -154,6 +155,8 @@ class SimpleAgent:
             if tool_call.name == "finish":
                 return self._handle_finish(tool_call)
             result = handler(**tool_call.arguments)
+            if inspect.isawaitable(result):
+                result = await result
             if hasattr(result, "content"):
                 return ToolResult(
                     tool_call_id=tool_call.id,

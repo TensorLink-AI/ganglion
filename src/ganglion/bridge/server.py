@@ -204,6 +204,17 @@ class RunExperimentRequest(BaseModel):
     config: dict[str, Any]
 
 
+class ConnectMCPServerRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    transport: str = Field(default="stdio", pattern="^(stdio|sse)$")
+    command: list[str] | None = None
+    url: str | None = None
+    env: dict[str, str] | None = None
+    tool_prefix: str = Field(default="", max_length=100)
+    category: str = Field(default="mcp", max_length=100)
+    timeout: float = Field(default=30.0, gt=0)
+
+
 # ── Health endpoints ───────────────────────────────────────
 
 
@@ -480,6 +491,70 @@ async def rollback_to(index: int) -> dict[str, Any]:
     if not result.success:
         _error_response("ROLLBACK_ERROR", "; ".join(result.errors))
     return _success_response(None)
+
+
+# ── MCP endpoints (v1) ────────────────────────────────────
+
+
+@app.get("/v1/mcp")
+async def get_mcp_status() -> dict[str, Any]:
+    """MCP integration status — connected servers and their tools."""
+    state = _get_state()
+    return _success_response(state._describe_mcp())
+
+
+@app.post("/v1/mcp/servers", status_code=201)
+async def connect_mcp_server(body: ConnectMCPServerRequest) -> dict[str, Any]:
+    """Dynamically connect to an external MCP server and register its tools."""
+    from ganglion.mcp.config import MCPClientConfig
+
+    state = _get_state()
+    config = MCPClientConfig(
+        name=body.name,
+        transport=body.transport,
+        command=body.command,
+        url=body.url,
+        env=body.env,
+        tool_prefix=body.tool_prefix or body.name,
+        category=body.category,
+        timeout=body.timeout,
+    )
+    result = await state.connect_mcp_server(config)
+    if not result.success:
+        _error_response("MCP_CONNECTION_ERROR", "; ".join(result.errors))
+    return _success_response(state._describe_mcp())
+
+
+@app.delete("/v1/mcp/servers/{name}")
+async def disconnect_mcp_server(name: str) -> dict[str, Any]:
+    """Disconnect from an MCP server and unregister its tools."""
+    state = _get_state()
+    result = await state.disconnect_mcp_server(name)
+    if not result.success:
+        _error_response("MCP_DISCONNECT_ERROR", "; ".join(result.errors))
+    return _success_response(state._describe_mcp())
+
+
+@app.post("/v1/mcp/servers/{name}/reconnect")
+async def reconnect_mcp_server(name: str) -> dict[str, Any]:
+    """Reconnect to a failed MCP server."""
+    state = _get_state()
+    if name not in state._mcp_bridges:
+        _error_response("NOT_FOUND", f"MCP server '{name}' not connected", status_code=404)
+
+    bridge = state._mcp_bridges[name]
+    config = bridge.config
+
+    # Disconnect and reconnect
+    disconnect_result = await state.disconnect_mcp_server(name)
+    if not disconnect_result.success:
+        _error_response("MCP_DISCONNECT_ERROR", "; ".join(disconnect_result.errors))
+
+    connect_result = await state.connect_mcp_server(config)
+    if not connect_result.success:
+        _error_response("MCP_CONNECTION_ERROR", "; ".join(connect_result.errors))
+
+    return _success_response(state._describe_mcp())
 
 
 # ── Backward compatibility (unversioned routes) ───────────
