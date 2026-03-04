@@ -62,8 +62,8 @@ class TestGanglionConfig:
         for key in list(os.environ.keys()):
             if key.startswith("GANGLION_"):
                 monkeypatch.delenv(key, raising=False)
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+        monkeypatch.delenv("LLM_PROVIDER_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_PROVIDER_BASE_URL", raising=False)
 
         config = GanglionConfig.from_env()
         assert config.llm_model == "gpt-4o"

@@ -33,10 +33,10 @@ else
 fi
 
 # OpenAI API key
-if [ -n "${OPENAI_API_KEY:-}" ]; then
-    pass "OPENAI_API_KEY is set"
+if [ -n "${LLM_PROVIDER_API_KEY:-}" ]; then
+    pass "LLM_PROVIDER_API_KEY is set"
 else
-    fail "OPENAI_API_KEY is not set"
+    fail "LLM_PROVIDER_API_KEY is not set"
 fi
 
 echo ""

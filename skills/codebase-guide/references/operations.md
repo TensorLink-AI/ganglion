@@ -9,7 +9,7 @@
 
 2. **Set your OpenAI API key:**
    ```bash
-   export OPENAI_API_KEY=sk-...
+   export LLM_PROVIDER_API_KEY=sk-...
    ```
 
 3. **Scaffold a project:**

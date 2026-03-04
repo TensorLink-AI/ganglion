@@ -2,7 +2,7 @@
 name: codebase-guide
 description: "Use for every task involving this project. Covers running Ganglion, its CLI commands, HTTP bridge API, pipeline execution, knowledge queries, configuration, and operational workflows. Trigger phrases: 'run the pipeline', 'start the server', 'check status', 'query knowledge', 'configure', 'call the API', 'scaffold a project', 'check metrics', 'rollback', 'swap policy'."
 homepage: https://github.com/TensorLink-AI/ganglion
-metadata: {"openclaw": {"emoji": "📘", "requires": {"bins": ["python3", "ganglion"], "env": ["OPENAI_API_KEY"]}, "always": true}}
+metadata: {"openclaw": {"emoji": "📘", "requires": {"bins": ["python3", "ganglion"], "env": ["LLM_PROVIDER_API_KEY"]}, "always": true}}
 ---
 
 # Ganglion — Operator's Manual
@@ -64,7 +64,7 @@ Interactive API docs: `$GANGLION_URL/v1/docs` (Swagger UI).
 
 ## How to Run
 
-**Prerequisites:** Python >= 3.11, `OPENAI_API_KEY` set (used by the LLM runtime).
+**Prerequisites:** Python >= 3.11, `LLM_PROVIDER_API_KEY` set (used by the LLM runtime).
 
 **Install:** `pip install ganglion`
 
@@ -193,7 +193,7 @@ See `{baseDir}/examples/common-workflows.md` for full step-by-step guides.
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | `FileNotFoundError: No config.py` | Wrong project path | Verify path contains `config.py` |
-| `OPENAI_API_KEY` errors | Missing or invalid API key | `export OPENAI_API_KEY=sk-...` |
+| `LLM_PROVIDER_API_KEY` errors | Missing or invalid API key | `export LLM_PROVIDER_API_KEY=sk-...` |
 | `ConcurrentMutationError` | Mutating during a pipeline run | Wait for the run to finish |
 | `PipelineValidationError` | Invalid pipeline DAG (cycles, missing deps) | Check `ganglion pipeline` output |
 | Agent stuck / max turns reached | Agent cannot make progress | Review knowledge, swap retry policy, adjust prompts |

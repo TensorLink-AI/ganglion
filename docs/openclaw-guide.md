@@ -6,7 +6,7 @@ This guide walks through how to set up and operate Ganglion from an OpenClaw bot
 
 - Python 3.10+
 - An OpenClaw installation with skill support
-- An `OPENAI_API_KEY` (or compatible LLM endpoint) for Ganglion's agent runtime
+- An `LLM_PROVIDER_API_KEY` (or compatible LLM endpoint) for Ganglion's agent runtime
 
 Install Ganglion:
 
@@ -321,7 +321,7 @@ Cooperation emerges from the shared knowledge pool. No coordinator is needed.
 |----------|---------|
 | `GANGLION_PROJECT` | Path to the subnet project directory (local mode) |
 | `GANGLION_URL` | URL of the Ganglion bridge server (remote mode) |
-| `OPENAI_API_KEY` | API key for the LLM backend used by Ganglion agents |
+| `LLM_PROVIDER_API_KEY` | API key for the LLM backend used by Ganglion agents |
 
 ## CLI command reference
 

@@ -186,13 +186,13 @@ knowledge = KnowledgeStore(backend=backend)
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENAI_API_KEY` | Yes | OpenAI API key (read by the openai SDK for LLM calls) |
+| `LLM_PROVIDER_API_KEY` | Yes | OpenAI API key (read by the openai SDK for LLM calls) |
 | `GANGLION_PROJECT` | No | Convention for local mode — set to project directory path |
 | `GANGLION_URL` | No | Convention for remote mode — set to HTTP bridge URL |
 
 `GANGLION_PROJECT` and `GANGLION_URL` are conventions used in skill mode detection, not read by the Ganglion code itself. All configuration is file-based via `config.py`.
 
-The `OPENAI_API_KEY` is read by the `openai` Python SDK (a dependency) and is required for any pipeline execution involving LLM agents.
+The `LLM_PROVIDER_API_KEY` is read by the `openai` Python SDK (a dependency) and is required for any pipeline execution involving LLM agents.
 
 ## LLM Client Configuration
 
@@ -200,7 +200,7 @@ The LLM client defaults can be overridden programmatically in config.py or via a
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `api_key` | `None` (falls back to `OPENAI_API_KEY`) | API key |
+| `api_key` | `None` (falls back to `LLM_PROVIDER_API_KEY`) | API key |
 | `base_url` | `None` (OpenAI default) | Base URL for OpenAI-compatible APIs |
 | `model` | `gpt-4o` | Default model |
 | `request_timeout` | `120.0` | Request timeout in seconds |

@@ -60,13 +60,13 @@ pip install ganglion
 
 ### OpenAI AuthenticationError / Invalid API key
 
-**Cause:** `OPENAI_API_KEY` is not set, empty, or invalid.
+**Cause:** `LLM_PROVIDER_API_KEY` is not set, empty, or invalid.
 
 **Fix:**
 ```bash
-export OPENAI_API_KEY=sk-...
+export LLM_PROVIDER_API_KEY=sk-...
 # Verify it's set
-echo $OPENAI_API_KEY | head -c 10
+echo $LLM_PROVIDER_API_KEY | head -c 10
 ```
 
 ### RateLimitError during pipeline execution

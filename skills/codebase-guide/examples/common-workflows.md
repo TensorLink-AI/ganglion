@@ -19,7 +19,7 @@
 
 3. **Set your API key:**
    ```bash
-   export OPENAI_API_KEY=sk-...
+   export LLM_PROVIDER_API_KEY=sk-...
    ```
 
 4. **Verify it loads:**

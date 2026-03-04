@@ -15,8 +15,8 @@ class GanglionConfig:
     """Immutable configuration loaded from environment variables."""
 
     # LLM
-    openai_api_key: str = ""
-    openai_base_url: str = ""
+    llm_provider_api_key: str = ""
+    llm_provider_base_url: str = ""
     llm_model: str = "gpt-4o"
     llm_max_retries: int = 5
     llm_base_delay: float = 1.0
@@ -79,16 +79,16 @@ class GanglionConfig:
                 return []
             return [item.strip() for item in raw.split(",") if item.strip()]
 
-        openai_api_key = os.environ.get("OPENAI_API_KEY", "")
-        openai_base_url = os.environ.get("OPENAI_BASE_URL", "")
+        llm_provider_api_key = os.environ.get("LLM_PROVIDER_API_KEY", "")
+        llm_provider_base_url = os.environ.get("LLM_PROVIDER_BASE_URL", "")
 
         # Default to OPEN-API-KEY when using Chutes
-        if "chutes" in openai_base_url.lower() and not openai_api_key:
-            openai_api_key = "OPEN-API-KEY"
+        if "chutes" in llm_provider_base_url.lower() and not llm_provider_api_key:
+            llm_provider_api_key = "OPEN-API-KEY"
 
         return cls(
-            openai_api_key=openai_api_key,
-            openai_base_url=openai_base_url,
+            llm_provider_api_key=llm_provider_api_key,
+            llm_provider_base_url=llm_provider_base_url,
             llm_model=_get("LLM_MODEL", "gpt-4o"),
             llm_max_retries=_get_int("LLM_MAX_RETRIES", 5),
             llm_base_delay=_get_float("LLM_BASE_DELAY", 1.0),
