@@ -26,6 +26,6 @@ class ExperimentResult(ToolOutput):
 class ValidationResult(ToolOutput):
     """Returned by validation tools."""
 
-    passed: bool = False
+    is_passed: bool = False
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

@@ -82,7 +82,7 @@ def _infer_schema(func: Callable) -> dict[str, Any]:
             continue
 
         hint = hints.get(param_name)
-        prop: dict[str, Any] = {}
+        property_schema: dict[str, Any] = {}
 
         if hint is not None:
             origin = getattr(hint, "__origin__", None)
@@ -90,16 +90,16 @@ def _infer_schema(func: Callable) -> dict[str, Any]:
                 json_type = _TYPE_MAP.get(origin, "string")
             else:
                 json_type = _TYPE_MAP.get(hint, "string")
-            prop["type"] = json_type
+            property_schema["type"] = json_type
         else:
-            prop["type"] = "string"
+            property_schema["type"] = "string"
 
         if param.default is inspect.Parameter.empty:
             required.append(param_name)
         else:
-            prop["default"] = param.default
+            property_schema["default"] = param.default
 
-        properties[param_name] = prop
+        properties[param_name] = property_schema
 
     schema: dict[str, Any] = {
         "type": "object",
@@ -182,12 +182,12 @@ def build_toolset(*names: str) -> tuple[list[dict], dict[str, Callable]]:
     for name in names:
         if name == "finish":
             continue
-        td = _global_tools.get(name)
-        if td is None:
+        tool_def = _global_tools.get(name)
+        if tool_def is None:
             logger.warning("Tool '%s' not found in global registry", name)
             continue
-        schemas.append(td.to_openai_schema())
-        handlers[td.name] = td.func
+        schemas.append(tool_def.to_openai_schema())
+        handlers[tool_def.name] = tool_def.func
 
     schemas.append(get_finish_tool_schema())
     handlers["finish"] = lambda **kwargs: kwargs

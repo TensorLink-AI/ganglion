@@ -36,11 +36,11 @@ class Pattern:
 
     @classmethod
     def from_dict(cls, data: dict) -> Pattern:
-        ts = data.get("timestamp")
-        if isinstance(ts, str):
-            ts = datetime.fromisoformat(ts)
-        elif ts is None:
-            ts = datetime.utcnow()
+        parsed_timestamp = data.get("timestamp")
+        if isinstance(parsed_timestamp, str):
+            parsed_timestamp = datetime.fromisoformat(parsed_timestamp)
+        elif parsed_timestamp is None:
+            parsed_timestamp = datetime.utcnow()
         return cls(
             capability=data["capability"],
             description=data["description"],
@@ -48,7 +48,7 @@ class Pattern:
             metric_value=data.get("metric_value"),
             metric_name=data.get("metric_name"),
             stage=data.get("stage"),
-            timestamp=ts,
+            timestamp=parsed_timestamp,
             run_id=data.get("run_id"),
             source_bot=data.get("source_bot"),
         )
@@ -81,18 +81,18 @@ class Antipattern:
 
     @classmethod
     def from_dict(cls, data: dict) -> Antipattern:
-        ts = data.get("timestamp")
-        if isinstance(ts, str):
-            ts = datetime.fromisoformat(ts)
-        elif ts is None:
-            ts = datetime.utcnow()
+        parsed_timestamp = data.get("timestamp")
+        if isinstance(parsed_timestamp, str):
+            parsed_timestamp = datetime.fromisoformat(parsed_timestamp)
+        elif parsed_timestamp is None:
+            parsed_timestamp = datetime.utcnow()
         return cls(
             capability=data["capability"],
             error_summary=data["error_summary"],
             config=data.get("config"),
             failure_mode=data.get("failure_mode"),
             stage=data.get("stage"),
-            timestamp=ts,
+            timestamp=parsed_timestamp,
             run_id=data.get("run_id"),
             source_bot=data.get("source_bot"),
         )

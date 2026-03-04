@@ -111,14 +111,14 @@ class LLMClient:
         if message.tool_calls:
             result["tool_calls"] = [
                 {
-                    "id": tc.id,
+                    "id": tool_call.id,
                     "type": "function",
                     "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments,
                     },
                 }
-                for tc in message.tool_calls
+                for tool_call in message.tool_calls
             ]
 
         result["finish_reason"] = choice.finish_reason

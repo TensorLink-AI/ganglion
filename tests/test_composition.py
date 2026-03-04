@@ -33,11 +33,11 @@ class TestToolReturns:
     def test_validation_result(self):
         out = ValidationResult(
             content="checked",
-            passed=False,
+            is_passed=False,
             errors=["shape mismatch"],
             warnings=["high loss"],
         )
-        assert out.passed is False
+        assert out.is_passed is False
         assert len(out.errors) == 1
 
 

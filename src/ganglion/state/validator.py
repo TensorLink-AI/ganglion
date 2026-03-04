@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 class ValidationResult:
     """Result of validating code."""
 
-    passed: bool
+    is_passed: bool
     errors: list[str] = field(default_factory=list)
 
 
@@ -34,7 +34,7 @@ class MutationValidator:
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
-            return ValidationResult(passed=False, errors=[f"Syntax error: {e}"])
+            return ValidationResult(is_passed=False, errors=[f"Syntax error: {e}"])
 
         has_tool_decorator = False
         for node in ast.walk(tree):
@@ -65,7 +65,7 @@ class MutationValidator:
 
         errors.extend(self._check_blocked_imports(tree))
 
-        return ValidationResult(passed=len(errors) == 0, errors=errors)
+        return ValidationResult(is_passed=len(errors) == 0, errors=errors)
 
     def validate_agent(self, code: str) -> ValidationResult:
         """Checks: valid syntax, class inheriting BaseAgentWrapper,
@@ -75,7 +75,7 @@ class MutationValidator:
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
-            return ValidationResult(passed=False, errors=[f"Syntax error: {e}"])
+            return ValidationResult(is_passed=False, errors=[f"Syntax error: {e}"])
 
         has_agent_class = False
         for node in ast.walk(tree):
@@ -100,14 +100,14 @@ class MutationValidator:
 
         errors.extend(self._check_blocked_imports(tree))
 
-        return ValidationResult(passed=len(errors) == 0, errors=errors)
+        return ValidationResult(is_passed=len(errors) == 0, errors=errors)
 
     def validate_pipeline(self, pipeline_def: object) -> ValidationResult:
         """Validate a PipelineDef instance."""
         if hasattr(pipeline_def, "validate"):
             errors = pipeline_def.validate()  # type: ignore[union-attr]
-            return ValidationResult(passed=len(errors) == 0, errors=errors)
-        return ValidationResult(passed=False, errors=["Not a valid PipelineDef"])
+            return ValidationResult(is_passed=len(errors) == 0, errors=errors)
+        return ValidationResult(is_passed=False, errors=["Not a valid PipelineDef"])
 
     def _check_blocked_imports(self, tree: ast.AST) -> list[str]:
         """Check for blocked imports in an AST."""

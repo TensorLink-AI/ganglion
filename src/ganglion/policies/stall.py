@@ -32,9 +32,9 @@ class ConfigComparisonStallDetector:
         except (KeyError, TypeError, AttributeError):
             return False
 
-        is_dup = config in self.previous_configs
+        is_duplicate = config in self.previous_configs
         self.previous_configs.append(config)
-        return is_dup
+        return is_duplicate
 
     def divergence_prompt(self) -> str:
         return (

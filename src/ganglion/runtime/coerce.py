@@ -99,8 +99,8 @@ class CoercionPipeline:
             expected = type_hints.get(arg_name)
             current = value
             for coerce_fn in self.coercions:
-                current, modified = coerce_fn(arg_name, current, expected)
-                if modified:
+                current, is_modified = coerce_fn(arg_name, current, expected)
+                if is_modified:
                     logger.info(
                         "Coercion '%s' modified arg '%s': %r -> %r",
                         coerce_fn.__name__,

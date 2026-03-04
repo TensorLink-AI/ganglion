@@ -131,7 +131,7 @@ class PipelineOrchestrator:
                 if d in results and not results[d].success
             ]
             if failed_deps:
-                if stage_def.optional:
+                if stage_def.is_optional:
                     self.emit(StageSkipped(
                         stage=stage_def.name,
                         reason=f"Failed deps: {failed_deps}",
@@ -163,7 +163,7 @@ class PipelineOrchestrator:
 
             self.emit(StageCompleted(stage=stage_def.name, result=stage_result))
 
-            if not stage_result.success and not stage_def.optional:
+            if not stage_result.success and not stage_def.is_optional:
                 result = PipelineResult(
                     success=False,
                     failed_stage=stage_def.name,

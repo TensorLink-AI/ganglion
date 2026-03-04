@@ -29,10 +29,10 @@ def main(argv: list[str] | None = None) -> None:
         prog="ganglion",
         description="Domain-specific execution engine for Bittensor subnet mining",
     )
-    sub = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command")
 
     # ── init ───────────────────────────────────────────────
-    init_parser = sub.add_parser(
+    init_parser = subparsers.add_parser(
         "init",
         help="Scaffold a new subnet project directory",
     )
@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     # ── serve ──────────────────────────────────────────────
-    serve_parser = sub.add_parser(
+    serve_parser = subparsers.add_parser(
         "serve",
         help="Start the HTTP bridge server for OpenClaw integration",
     )
@@ -82,27 +82,27 @@ def main(argv: list[str] | None = None) -> None:
 
     _project_arg = {"help": "Path to the subnet project directory"}
 
-    status_parser = sub.add_parser("status", help="Show framework state")
+    status_parser = subparsers.add_parser("status", help="Show framework state")
     status_parser.add_argument("project_dir", **_project_arg)
     status_parser.add_argument("--bot-id", default=None)
 
-    tools_parser = sub.add_parser("tools", help="List registered tools")
+    tools_parser = subparsers.add_parser("tools", help="List registered tools")
     tools_parser.add_argument("project_dir", **_project_arg)
     tools_parser.add_argument("--category", default=None)
 
-    agents_parser = sub.add_parser("agents", help="List registered agents")
+    agents_parser = subparsers.add_parser("agents", help="List registered agents")
     agents_parser.add_argument("project_dir", **_project_arg)
 
-    knowledge_parser = sub.add_parser("knowledge", help="Show knowledge store")
+    knowledge_parser = subparsers.add_parser("knowledge", help="Show knowledge store")
     knowledge_parser.add_argument("project_dir", **_project_arg)
     knowledge_parser.add_argument("--bot-id", default=None)
     knowledge_parser.add_argument("--capability", default=None)
     knowledge_parser.add_argument("--max-entries", type=int, default=20)
 
-    pipeline_parser = sub.add_parser("pipeline", help="Show pipeline definition")
+    pipeline_parser = subparsers.add_parser("pipeline", help="Show pipeline definition")
     pipeline_parser.add_argument("project_dir", **_project_arg)
 
-    run_parser = sub.add_parser("run", help="Run pipeline or a single stage")
+    run_parser = subparsers.add_parser("run", help="Run pipeline or a single stage")
     run_parser.add_argument("project_dir", **_project_arg)
     run_parser.add_argument("--bot-id", default=None)
     run_parser.add_argument("--stage", default=None, help="Run only this stage")

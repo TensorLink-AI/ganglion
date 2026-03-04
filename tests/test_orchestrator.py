@@ -139,7 +139,7 @@ class TestPipelineOrchestrator:
             name="test",
             stages=[
                 StageDef(name="step1", agent="FailAgent"),
-                StageDef(name="step2", agent="SuccessAgent", depends_on=["step1"], optional=True),
+                StageDef(name="step2", agent="SuccessAgent", depends_on=["step1"], is_optional=True),
                 StageDef(name="step3", agent="SuccessAgent"),
             ],
         )

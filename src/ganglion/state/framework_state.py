@@ -60,7 +60,7 @@ class FrameworkState:
         # Concurrency control
         self._run_lock = asyncio.Lock()
         self._mutation_lock = asyncio.Lock()
-        self._running: bool = False
+        self._is_running: bool = False
 
         # Mutation audit log
         self.mutations: list[Mutation] = []
@@ -155,16 +155,16 @@ class FrameworkState:
                     continue
                 try:
                     # Import and find BaseAgentWrapper subclasses
-                    mod_spec = importlib.util.spec_from_file_location(
+                    module_spec = importlib.util.spec_from_file_location(
                         py_file.stem, str(py_file)
                     )
-                    if mod_spec and mod_spec.loader:
-                        mod = importlib.util.module_from_spec(mod_spec)
-                        mod_spec.loader.exec_module(mod)
+                    if module_spec and module_spec.loader:
+                        module = importlib.util.module_from_spec(module_spec)
+                        module_spec.loader.exec_module(module)
                         from ganglion.composition.base_agent import BaseAgentWrapper
                         import inspect as _inspect
 
-                        for name, obj in _inspect.getmembers(mod, _inspect.isclass):
+                        for name, obj in _inspect.getmembers(module, _inspect.isclass):
                             if (
                                 issubclass(obj, BaseAgentWrapper)
                                 and obj is not BaseAgentWrapper
@@ -194,7 +194,7 @@ class FrameworkState:
             "agents": self.agent_registry.list_all(),
             "knowledge": (await self.knowledge.summary()) if self.knowledge else None,
             "mutations": len(self.mutations),
-            "running": self._running,
+            "running": self._is_running,
         }
 
     # ── Mutation methods (all go through validation + audit) ─
@@ -211,7 +211,7 @@ class FrameworkState:
             self._check_not_running("Cannot mutate tools during a pipeline run")
 
             result = self.validator.validate_tool(code)
-            if not result.passed:
+            if not result.is_passed:
                 return MutationResult(success=False, errors=result.errors)
 
             path = self.project_root / "tools" / f"{name}.py"
@@ -221,7 +221,7 @@ class FrameworkState:
 
             if test_code:
                 test_result = self._run_test(test_code)
-                if not test_result.passed:
+                if not test_result.is_passed:
                     if previous:
                         path.write_text(previous)
                     else:
@@ -256,7 +256,7 @@ class FrameworkState:
             self._check_not_running("Cannot mutate agents during a pipeline run")
 
             result = self.validator.validate_agent(code)
-            if not result.passed:
+            if not result.is_passed:
                 return MutationResult(success=False, errors=result.errors)
 
             path = self.project_root / "agents" / f"{name.lower()}.py"
@@ -376,20 +376,20 @@ class FrameworkState:
                 section_marker = f"# section: {prompt_section}"
                 lines = previous.splitlines()
                 new_lines = []
-                skip = False
-                replaced = False
+                should_skip = False
+                is_replaced = False
                 for line in lines:
                     if line.strip() == section_marker:
-                        skip = True
-                        replaced = True
+                        should_skip = True
+                        is_replaced = True
                         new_lines.append(section_marker)
                         new_lines.append(f'{prompt_section} = """{content}"""')
                         continue
-                    if skip and line.startswith("# section:"):
-                        skip = False
-                    if not skip:
+                    if should_skip and line.startswith("# section:"):
+                        should_skip = False
+                    if not should_skip:
                         new_lines.append(line)
-                if not replaced:
+                if not is_replaced:
                     new_lines.append("")
                     new_lines.append(section_marker)
                     new_lines.append(f'{prompt_section} = """{content}"""')
@@ -417,7 +417,7 @@ class FrameworkState:
     ) -> PipelineResult:
         """Execute the current pipeline. Blocks mutations during execution."""
         async with self._run_lock:
-            self._running = True
+            self._is_running = True
             try:
                 task = TaskContext(
                     subnet_config=self.subnet_config,
@@ -436,7 +436,7 @@ class FrameworkState:
                     await self.knowledge.trim()
                 return result
             finally:
-                self._running = False
+                self._is_running = False
 
     async def run_single_stage(
         self,
@@ -445,7 +445,7 @@ class FrameworkState:
     ) -> StageResult:
         """Run a single stage in isolation."""
         async with self._run_lock:
-            self._running = True
+            self._is_running = True
             try:
                 stage_def = self.pipeline_def.get_stage(stage_name)
                 if not stage_def:
@@ -465,7 +465,7 @@ class FrameworkState:
                 )
                 return await orchestrator._execute_stage(stage_def, task)
             finally:
-                self._running = False
+                self._is_running = False
 
     async def run_direct_experiment(self, config: dict) -> dict:
         """Run a single experiment directly, bypassing the pipeline.
@@ -518,7 +518,7 @@ class FrameworkState:
     # ── Internal ────────────────────────────────────────────
 
     def _check_not_running(self, message: str) -> None:
-        if self._running:
+        if self._is_running:
             raise ConcurrentMutationError(message)
 
     async def _apply_rollback(self, mutation: Mutation) -> MutationResult:
@@ -573,6 +573,6 @@ class FrameworkState:
 
         try:
             exec(test_code, {"__builtins__": __builtins__})
-            return ValidationResult(passed=True)
+            return ValidationResult(is_passed=True)
         except Exception as e:
-            return ValidationResult(passed=False, errors=[str(e)])
+            return ValidationResult(is_passed=False, errors=[str(e)])

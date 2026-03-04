@@ -102,13 +102,13 @@ class SimpleAgent:
 
     def _build_assistant_message(self, response: dict) -> dict[str, Any]:
         """Build the assistant message to append to the conversation."""
-        msg: dict[str, Any] = {
+        message: dict[str, Any] = {
             "role": "assistant",
             "content": response.get("content", ""),
         }
         if "tool_calls" in response:
-            msg["tool_calls"] = response["tool_calls"]
-        return msg
+            message["tool_calls"] = response["tool_calls"]
+        return message
 
     def _parse_tool_calls(self, response: dict) -> list[ToolCall]:
         """Extract tool calls from the LLM response."""

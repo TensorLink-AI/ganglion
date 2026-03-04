@@ -93,12 +93,12 @@ class ToolRegistry:
         for name in names:
             if name == "finish":
                 continue
-            td = self._tools.get(name)
-            if td is None:
+            tool_def = self._tools.get(name)
+            if tool_def is None:
                 logger.warning("Tool '%s' not found in registry", name)
                 continue
-            schemas.append(td.to_openai_schema())
-            handlers[td.name] = td.func
+            schemas.append(tool_def.to_openai_schema())
+            handlers[tool_def.name] = tool_def.func
 
         schemas.append(get_finish_tool_schema())
         handlers["finish"] = lambda **kwargs: kwargs
