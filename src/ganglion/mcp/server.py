@@ -40,7 +40,7 @@ class MCPServerBridge:
     def _setup_handlers(self) -> None:
         """Register list_tools and call_tool handlers on the MCP server."""
 
-        @self._server.list_tools()  # type: ignore[untyped-decorator]
+        @self._server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
         async def handle_list_tools() -> list[Tool]:
             tools = []
             for tool_dict in self._registry.list_all():

@@ -235,3 +235,227 @@ class LoadTrainer(BaseAgentWrapper):
         assert result.success is True
         assert len(state.mutations) == 1
         assert state.mutations[0].mutation_type == "write_prompt"
+
+    @pytest.mark.asyncio
+    async def test_update_prompt_replace_existing(self, state):
+        """Test updating a prompt section that already exists."""
+        await state.update_prompt("trainer", "role", "Original role.")
+        result = await state.update_prompt("trainer", "role", "Updated role.")
+        assert result.success is True
+        assert len(state.mutations) == 2
+        # Read the file and verify the section was replaced
+        path = state.project_root / "prompts" / "trainer.py"
+        content = path.read_text()
+        assert "Updated role." in content
+
+    @pytest.mark.asyncio
+    async def test_write_and_register_agent(self, state):
+        code = '''
+from ganglion.composition.base_agent import BaseAgentWrapper
+
+class MyAgent(BaseAgentWrapper):
+    """A test agent."""
+
+    def build_system_prompt(self, task):
+        return "test prompt"
+
+    def build_tools(self, task):
+        return [], {}
+'''
+        result = await state.write_and_register_agent("MyAgent", code)
+        assert result.success is True
+        assert len(state.mutations) == 1
+        assert state.mutations[0].mutation_type == "write_agent"
+
+    @pytest.mark.asyncio
+    async def test_write_agent_invalid_code(self, state):
+        code = "def not_a_class(): pass"
+        result = await state.write_and_register_agent("BadAgent", code)
+        assert result.success is False
+
+    @pytest.mark.asyncio
+    async def test_rollback_to(self, state):
+        from ganglion.composition.base_agent import BaseAgentWrapper
+
+        state.agent_registry.register("A1", BaseAgentWrapper)
+        state.agent_registry.register("A2", BaseAgentWrapper)
+
+        await state.apply_pipeline_patch(
+            [{"op": "add_stage", "stage": {"name": "s1", "agent": "A1"}}]
+        )
+        await state.apply_pipeline_patch(
+            [{"op": "add_stage", "stage": {"name": "s2", "agent": "A2"}}]
+        )
+        assert len(state.mutations) == 2
+
+        result = await state.rollback_to(1)
+        assert result.success is True
+        assert len(state.mutations) == 1
+        assert state.pipeline_def.get_stage("s2") is None
+
+    @pytest.mark.asyncio
+    async def test_rollback_to_zero(self, state):
+        from ganglion.composition.base_agent import BaseAgentWrapper
+
+        state.agent_registry.register("A1", BaseAgentWrapper)
+        await state.apply_pipeline_patch(
+            [{"op": "add_stage", "stage": {"name": "s1", "agent": "A1"}}]
+        )
+        result = await state.rollback_to(0)
+        assert result.success is True
+        assert len(state.mutations) == 0
+
+    @pytest.mark.asyncio
+    async def test_run_direct_experiment_no_tool(self, state):
+        result = await state.run_direct_experiment({"param": "value"})
+        assert result["success"] is False
+        assert "No 'run_experiment' tool registered" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_run_direct_experiment_success(self, state):
+        from ganglion.composition.tool_returns import ToolOutput
+
+        def run_experiment(**kwargs):
+            return ToolOutput(content="experiment done")
+
+        state.tool_registry.register(
+            name="run_experiment",
+            func=run_experiment,
+            description="Run an experiment",
+            parameters_schema={"type": "object", "properties": {}},
+        )
+        result = await state.run_direct_experiment({})
+        assert result["success"] is True
+        assert result["content"] == "experiment done"
+
+    @pytest.mark.asyncio
+    async def test_run_direct_experiment_plain_result(self, state):
+        state.tool_registry.register(
+            name="run_experiment",
+            func=lambda **kwargs: "plain result",
+            description="Run an experiment",
+            parameters_schema={"type": "object", "properties": {}},
+        )
+        result = await state.run_direct_experiment({})
+        assert result["success"] is True
+        assert result["content"] == "plain result"
+
+    @pytest.mark.asyncio
+    async def test_run_direct_experiment_error(self, state):
+        def run_experiment(**kwargs):
+            raise ValueError("experiment failed")
+
+        state.tool_registry.register(
+            name="run_experiment",
+            func=run_experiment,
+            description="Run an experiment",
+            parameters_schema={"type": "object", "properties": {}},
+        )
+        result = await state.run_direct_experiment({})
+        assert result["success"] is False
+        assert "experiment failed" in result["error"]
+
+    def test_run_test_success(self, state):
+        result = state._run_test("assert 1 + 1 == 2")
+        assert result.is_passed is True
+
+    def test_run_test_assertion_error(self, state):
+        result = state._run_test("assert False, 'failed'")
+        assert result.is_passed is False
+        assert any("failed" in e for e in result.errors)
+
+    def test_run_test_unexpected_error(self, state):
+        result = state._run_test("raise RuntimeError('boom')")
+        assert result.is_passed is False
+        assert any("boom" in e for e in result.errors)
+
+    @pytest.mark.asyncio
+    async def test_rollback_write_tool(self, state):
+        """Test rollback of a write_tool mutation restores previous state."""
+        code = '''
+from ganglion.composition.tool_registry import tool
+
+@tool("rollback_tool")
+def rollback_tool(x: int) -> str:
+    """A test tool."""
+    return str(x)
+'''
+        result = await state.write_and_register_tool("rollback_tool", code, "general")
+        assert result.success is True
+        assert state.tool_registry.has("rollback_tool")
+
+        rollback = await state.rollback_last()
+        assert rollback.success is True
+        assert not state.tool_registry.has("rollback_tool")
+
+    @pytest.mark.asyncio
+    async def test_rollback_write_agent(self, state):
+        """Test rollback of a write_agent mutation."""
+        code = '''
+from ganglion.composition.base_agent import BaseAgentWrapper
+
+class RollbackAgent(BaseAgentWrapper):
+    """A test agent."""
+    def build_system_prompt(self, task):
+        return "test"
+    def build_tools(self, task):
+        return [], {}
+'''
+        result = await state.write_and_register_agent("RollbackAgent", code)
+        assert result.success is True
+
+        rollback = await state.rollback_last()
+        assert rollback.success is True
+
+    @pytest.mark.asyncio
+    async def test_rollback_swap_policy(self, state):
+        """Test rollback of a swap_policy mutation."""
+        original_retry = state.pipeline_def.get_stage("train").retry
+        new_policy = FixedRetry(max_attempts=10)
+        await state.swap_policy("train", new_policy)
+        assert isinstance(state.pipeline_def.get_stage("train").retry, FixedRetry)
+
+        rollback = await state.rollback_last()
+        assert rollback.success is True
+        # Policy should be restored
+        assert state.pipeline_def.get_stage("train").retry is original_retry
+
+    @pytest.mark.asyncio
+    async def test_rollback_swap_default_policy(self, state):
+        """Test rollback of a default swap_policy mutation."""
+        original = state.pipeline_def.default_retry
+        await state.swap_policy(None, FixedRetry(max_attempts=7))
+        rollback = await state.rollback_last()
+        assert rollback.success is True
+        assert state.pipeline_def.default_retry is original
+
+    @pytest.mark.asyncio
+    async def test_write_tool_with_test(self, state):
+        """Test writing a tool with test_code that passes."""
+        code = '''
+from ganglion.composition.tool_registry import tool
+
+@tool("tested_tool")
+def tested_tool(x: int) -> str:
+    """A tested tool."""
+    return str(x)
+'''
+        test_code = "assert 1 + 1 == 2"
+        result = await state.write_and_register_tool("tested_tool", code, "general", test_code)
+        assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_write_tool_with_failing_test(self, state):
+        """Test writing a tool with test_code that fails."""
+        code = '''
+from ganglion.composition.tool_registry import tool
+
+@tool("bad_tested_tool")
+def bad_tested_tool(x: int) -> str:
+    """A tool with a failing test."""
+    return str(x)
+'''
+        test_code = "assert False, 'test should fail'"
+        result = await state.write_and_register_tool("bad_tested_tool", code, "general", test_code)
+        assert result.success is False
+        assert any("Test failed" in e for e in result.errors)

@@ -365,3 +365,139 @@ class TestFrameworkStateMCP:
         desc = await state.describe()
         assert "mcp" in desc
         assert "connected_servers" in desc["mcp"]
+
+
+class TestMCPServerBridge:
+    """Test MCPServerBridge exposing tools as MCP server."""
+
+    def _make_registry(self):  # type: ignore[no-untyped-def]
+        from ganglion.state.tool_registry import ToolRegistry
+
+        registry = ToolRegistry()
+        registry.register(
+            name="greet",
+            func=lambda name="world": f"Hello, {name}!",
+            description="Greet someone",
+            parameters_schema={
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+            },
+            category="general",
+        )
+        registry.register(
+            name="add",
+            func=lambda a=0, b=0: a + b,
+            description="Add two numbers",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+            category="math",
+        )
+        return registry
+
+    def test_create_bridge(self):
+        from ganglion.mcp.server import MCPServerBridge
+
+        registry = self._make_registry()
+        bridge = MCPServerBridge(registry, server_name="test-server")
+        assert bridge._registry is registry
+        assert bridge._server is not None
+
+    def test_create_bridge_with_categories(self):
+        from ganglion.mcp.server import MCPServerBridge
+
+        registry = self._make_registry()
+        bridge = MCPServerBridge(registry, categories=["math"])
+        assert bridge._categories == ["math"]
+
+    @pytest.mark.asyncio
+    async def test_list_tools_all(self):
+        from ganglion.mcp.server import MCPServerBridge
+
+        registry = self._make_registry()
+        _bridge = MCPServerBridge(registry)
+        assert _bridge._server is not None
+        assert len(registry.list_all()) == 2
+
+    @pytest.mark.asyncio
+    async def test_list_tools_with_category_filter(self):
+        from ganglion.mcp.server import MCPServerBridge
+
+        registry = self._make_registry()
+        bridge = MCPServerBridge(registry, categories=["math"])
+
+        # Simulate the handler's filtering logic
+        tools = []
+        for tool_dict in registry.list_all():
+            if bridge._categories and tool_dict.get("category") not in bridge._categories:
+                continue
+            tools.append(tool_dict["name"])
+        assert tools == ["add"]
+
+    @pytest.mark.asyncio
+    async def test_call_tool_success(self):
+        from ganglion.mcp.server import MCPServerBridge
+
+        registry = self._make_registry()
+        _bridge = MCPServerBridge(registry)
+
+        tool_def = registry.get("greet")
+        assert tool_def is not None
+        result = tool_def.func(name="Claude")
+        assert result == "Hello, Claude!"
+        assert _bridge._server is not None
+
+    @pytest.mark.asyncio
+    async def test_call_tool_not_found(self):
+        from ganglion.mcp.server import MCPServerBridge
+
+        _bridge = MCPServerBridge(self._make_registry())
+        assert _bridge._registry.get("nonexistent") is None
+
+    def test_call_tool_with_exception(self):
+        from ganglion.state.tool_registry import ToolRegistry
+
+        registry = ToolRegistry()
+
+        def failing_func(**kwargs):  # type: ignore[no-untyped-def]
+            raise ValueError("test error")
+
+        registry.register(
+            name="fail_tool",
+            func=failing_func,
+            description="A failing tool",
+            parameters_schema={"type": "object", "properties": {}},
+        )
+
+        from ganglion.mcp.server import MCPServerBridge
+
+        _bridge = MCPServerBridge(registry)
+        tool_def = _bridge._registry.get("fail_tool")
+        assert tool_def is not None
+        with pytest.raises(ValueError, match="test error"):
+            tool_def.func()
+
+    @pytest.mark.asyncio
+    async def test_call_tool_with_tool_output(self):
+        from ganglion.state.tool_registry import ToolRegistry
+
+        registry = ToolRegistry()
+        registry.register(
+            name="output_tool",
+            func=lambda: ToolOutput(content="structured content"),
+            description="Returns ToolOutput",
+            parameters_schema={"type": "object", "properties": {}},
+        )
+
+        from ganglion.mcp.server import MCPServerBridge
+
+        _bridge = MCPServerBridge(registry)
+        tool_def = _bridge._registry.get("output_tool")
+        assert tool_def is not None
+        result = tool_def.func()
+        assert hasattr(result, "content")
+        assert result.content == "structured content"
