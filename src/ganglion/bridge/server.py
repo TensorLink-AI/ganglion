@@ -489,25 +489,25 @@ async def rollback_to(index: int) -> dict[str, Any]:
 @app.get("/status")
 async def get_status_compat() -> dict[str, Any]:
     """Full framework state snapshot (deprecated: use /v1/status)."""
-    return await get_status()
+    return await get_status()  # type: ignore[no-any-return]
 
 
 @app.get("/pipeline")
 async def get_pipeline_compat() -> dict[str, Any]:
     """Current pipeline definition (deprecated: use /v1/pipeline)."""
-    return await get_pipeline()
+    return await get_pipeline()  # type: ignore[no-any-return]
 
 
 @app.get("/tools")
 async def get_tools_compat(category: str | None = None) -> dict[str, Any]:
     """Registered tools (deprecated: use /v1/tools)."""
-    return await get_tools(category)
+    return await get_tools(category)  # type: ignore[no-any-return]
 
 
 @app.get("/agents")
 async def get_agents_compat() -> dict[str, Any]:
     """Registered agents (deprecated: use /v1/agents)."""
-    return await get_agents()
+    return await get_agents()  # type: ignore[no-any-return]
 
 
 @app.get("/knowledge")
@@ -516,34 +516,34 @@ async def get_knowledge_compat(
     max_entries: int = 20,
 ) -> dict[str, Any]:
     """Knowledge store (deprecated: use /v1/knowledge)."""
-    return await get_knowledge(capability, max_entries)
+    return await get_knowledge(capability, max_entries)  # type: ignore[no-any-return]
 
 
 @app.post("/tools")
 async def write_tool_compat(body: WriteToolRequest) -> dict[str, Any]:
     """Write tool (deprecated: use /v1/tools)."""
-    return await write_tool(body)
+    return await write_tool(body)  # type: ignore[no-any-return]
 
 
 @app.post("/agents")
 async def write_agent_compat(body: WriteAgentRequest) -> dict[str, Any]:
     """Write agent (deprecated: use /v1/agents)."""
-    return await write_agent(body)
+    return await write_agent(body)  # type: ignore[no-any-return]
 
 
 @app.patch("/pipeline")
 async def patch_pipeline_compat(body: PatchPipelineRequest) -> dict[str, Any]:
     """Patch pipeline (deprecated: use /v1/pipeline)."""
-    return await patch_pipeline(body)
+    return await patch_pipeline(body)  # type: ignore[no-any-return]
 
 
 @app.post("/run/pipeline")
 async def run_pipeline_compat(body: RunPipelineRequest | None = None) -> dict[str, Any]:
     """Run pipeline (deprecated: use /v1/run/pipeline)."""
-    return await run_pipeline(body)
+    return await run_pipeline(body)  # type: ignore[no-any-return]
 
 
 @app.post("/rollback/last")
 async def rollback_last_compat() -> dict[str, Any]:
     """Rollback (deprecated: use /v1/rollback/last)."""
-    return await rollback_last()
+    return await rollback_last()  # type: ignore[no-any-return]

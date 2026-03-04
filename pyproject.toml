@@ -48,6 +48,15 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "ganglion.bridge.server"
+disallow_untyped_decorators = false
+disallow_subclassing_any = false
+
+[[tool.mypy.overrides]]
+module = "ganglion.runtime.llm_client"
+warn_unused_ignores = false
+
 [tool.bandit]
 exclude_dirs = ["tests"]
 
