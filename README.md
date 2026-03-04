@@ -14,6 +14,11 @@ Layer 4: Policies         — Retry, stall detection, model escalation (all swap
 Layer 5: Subnet Domain    — Developer-written config, tools, prompts, agents
 ```
 
+## Prerequisites
+
+- Python 3.11 or later
+- An OpenAI API key (or compatible provider)
+
 ## Install
 
 ```bash
@@ -25,6 +30,22 @@ For development:
 ```bash
 pip install -e ".[dev]"
 ```
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `OPENAI_API_KEY` | Yes (for LLM) | — | OpenAI API key |
+| `OPENAI_BASE_URL` | No | — | Custom API base URL |
+| `GANGLION_LLM_MODEL` | No | `gpt-4o` | LLM model name |
+| `GANGLION_HOST` | No | `127.0.0.1` | Server bind host |
+| `GANGLION_PORT` | No | `8899` | Server bind port |
+| `GANGLION_CORS_ORIGINS` | No | `http://localhost:3000` | Comma-separated allowed origins |
+| `GANGLION_LOG_LEVEL` | No | `INFO` | Logging level |
+
+See `.env.example` for the full list.
 
 ## Quick Start
 
@@ -299,10 +320,46 @@ Not all knowledge is equally shareable. Antipatterns are always worth sharing �
 3. **Contracts over conventions.** Typed interfaces for shared data, not string-keyed bags.
 4. **Thin orchestration.** The orchestrator sequences stages and routes data. It has no opinions about temperature, stall detection, or debugging strategy.
 
+## Running Locally
+
+```bash
+# Scaffold a new project
+ganglion init ./my-subnet --subnet sn9 --netuid 9
+
+# Start the HTTP bridge server
+ganglion serve ./my-subnet --bot-id alpha
+
+# Or use local mode (no server)
+ganglion status ./my-subnet
+ganglion run ./my-subnet
+```
+
 ## Testing
 
 ```bash
 pytest tests/ -v
+```
+
+With coverage:
+
+```bash
+pytest tests/ -v --cov=ganglion --cov-report=term-missing
+```
+
+## Deployment
+
+### Docker
+
+```bash
+docker build -t ganglion .
+docker run -p 8899:8899 -e OPENAI_API_KEY=sk-... -v ./my-subnet:/app/project ganglion
+```
+
+### From Source
+
+```bash
+pip install .
+ganglion serve ./my-subnet --bot-id alpha
 ```
 
 ## License

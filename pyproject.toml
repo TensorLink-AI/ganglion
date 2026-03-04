@@ -10,16 +10,19 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
-    "openai>=1.0",
-    "fastapi>=0.100",
-    "uvicorn>=0.20",
-    "pydantic>=2.0",
+    "openai>=1.0,<3.0",
+    "fastapi>=0.100,<1.0",
+    "uvicorn>=0.20,<1.0",
+    "pydantic>=2.0,<3.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "pytest-asyncio>=0.21",
+    "pytest>=7.0,<9.0",
+    "pytest-asyncio>=0.21,<1.0",
+    "pytest-cov>=4.0,<6.0",
+    "ruff>=0.4",
+    "mypy>=1.0",
 ]
 
 [project.scripts]
@@ -31,3 +34,26 @@ packages = ["src/ganglion"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+
+[tool.coverage.run]
+source = ["ganglion"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

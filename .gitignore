@@ -5,3 +5,21 @@ dist/
 build/
 .pytest_cache/
 *.egg
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Type checking
+.mypy_cache/
+.ruff_cache/

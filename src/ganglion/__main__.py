@@ -21,10 +21,36 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
+import signal
 import sys
+
+logger = logging.getLogger("ganglion")
+
+
+def _setup_logging(level: str = "INFO") -> None:
+    """Configure structured logging with appropriate level."""
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+    )
+
+
+def _setup_signal_handlers() -> None:
+    """Install graceful shutdown handlers for SIGTERM and SIGINT."""
+    def _handle_shutdown(signum, frame):
+        sig_name = signal.Signals(signum).name
+        logger.info("Received %s, shutting down gracefully", sig_name)
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _handle_shutdown)
+    signal.signal(signal.SIGINT, _handle_shutdown)
 
 
 def main(argv: list[str] | None = None) -> None:
+    _setup_signal_handlers()
+
     parser = argparse.ArgumentParser(
         prog="ganglion",
         description="Domain-specific execution engine for Bittensor subnet mining",
@@ -68,14 +94,14 @@ def main(argv: list[str] | None = None) -> None:
     )
     serve_parser.add_argument(
         "--host",
-        default="127.0.0.1",
-        help="Host to bind the server to (default: 127.0.0.1)",
+        default=None,
+        help="Host to bind the server to (default: from config or 127.0.0.1)",
     )
     serve_parser.add_argument(
         "--port",
         type=int,
-        default=8899,
-        help="Port to bind the server to (default: 8899)",
+        default=None,
+        help="Port to bind the server to (default: from config or 8899)",
     )
 
     # ── Local-mode commands (no server needed) ─────────────
@@ -117,6 +143,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.command is None:
         parser.print_help()
         sys.exit(1)
+
+    _setup_logging()
 
     commands = {
         "init": _run_init,
@@ -173,23 +201,15 @@ def _run_init(args: argparse.Namespace) -> None:
 
     target = Path(args.target_dir)
     if (target / "config.py").exists():
-        print(f"Error: {target}/config.py already exists. Refusing to overwrite.")
+        logger.error("Refusing to overwrite existing config at %s/config.py", target)
         sys.exit(1)
 
     created = template.scaffold(target)
 
-    print(f"Scaffolded project at {target.resolve()}")
-    print()
+    logger.info("Scaffolded project at %s", target.resolve())
     for path in created:
-        print(f"  {path}")
-    print()
-    print("Next steps:")
-    print(f"  1. Edit {target}/config.py with your subnet details")
-    print(f"  2. Replace the starter tool in {target}/tools/run_experiment.py")
-    print(f"  3. Start the bridge:  ganglion serve {target} --bot-id my-bot")
-    print(f"  4. Or use local mode: ganglion status {target}")
-    print(f"  5. Copy {target}/skill/SKILL.md to your OpenClaw skills directory")
-    print()
+        logger.info("  Created: %s", path)
+    logger.info("Next: edit %s/config.py, then run: ganglion serve %s --bot-id my-bot", target, target)
 
 
 # ── serve ──────────────────────────────────────────────────
@@ -198,24 +218,29 @@ def _run_init(args: argparse.Namespace) -> None:
 def _run_serve(args: argparse.Namespace) -> None:
     import uvicorn
 
-    from ganglion.bridge.server import app, configure
+    from ganglion.bridge.server import app, configure, setup_cors
+    from ganglion.config import GanglionConfig
+
+    config = GanglionConfig.from_env()
+    config.validate_or_raise()
 
     state = _load_state(args.project_dir, bot_id=args.bot_id)
-    configure(state)
+    configure(state, config)
+    setup_cors(config.cors_allowed_origins)
 
-    print(f"Ganglion bridge starting on {args.host}:{args.port}")
-    print(f"  Project:  {state.project_root.resolve()}")
-    print(f"  Pipeline: {state.pipeline_def.name}")
-    print(f"  Tools:    {len(state.tool_registry.list_all())}")
-    print(f"  Agents:   {len(state.agent_registry.list_all())}")
-    if args.bot_id:
-        print(f"  Bot ID:   {args.bot_id}")
-    print()
-    print("OpenClaw can connect at:")
-    print(f"  http://{args.host}:{args.port}")
-    print()
+    host = args.host or config.server_host
+    port = args.port or config.server_port
 
-    uvicorn.run(app, host=args.host, port=args.port)
+    logger.info(
+        "Ganglion bridge starting on %s:%d (project=%s, pipeline=%s, tools=%d, agents=%d)",
+        host, port,
+        state.project_root.resolve(),
+        state.pipeline_def.name,
+        len(state.tool_registry.list_all()),
+        len(state.agent_registry.list_all()),
+    )
+
+    uvicorn.run(app, host=host, port=port)
 
 
 # ── Local-mode commands ────────────────────────────────────
@@ -273,7 +298,11 @@ def _run_run(args: argparse.Namespace) -> None:
 
     overrides = None
     if args.overrides:
-        overrides = json.loads(args.overrides)
+        try:
+            overrides = json.loads(args.overrides)
+        except json.JSONDecodeError as exc:
+            logger.error("Invalid JSON for --overrides: %s", exc)
+            sys.exit(1)
 
     if args.stage:
         result = _async_run(state.run_single_stage(args.stage, overrides))

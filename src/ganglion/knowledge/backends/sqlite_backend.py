@@ -61,6 +61,12 @@ class SqliteKnowledgeBackend:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_antipatterns_source_bot ON antipatterns(source_bot)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_patterns_timestamp ON patterns(timestamp)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_antipatterns_timestamp ON antipatterns(timestamp)"
+            )
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(str(self.db_path))

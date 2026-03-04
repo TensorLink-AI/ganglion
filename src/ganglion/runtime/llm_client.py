@@ -29,14 +29,20 @@ class LLMClient:
         max_retries: int = 5,
         base_delay: float = 1.0,
         max_delay: float = 60.0,
+        request_timeout: float = 120.0,
     ):
         if AsyncOpenAI is None:
             raise ImportError("openai package is required. Install with: pip install openai")
-        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=request_timeout,
+        )
         self.model = model
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.max_delay = max_delay
+        self.request_timeout = request_timeout
 
     async def chat_completion(
         self,

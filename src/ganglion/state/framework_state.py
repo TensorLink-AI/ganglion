@@ -144,7 +144,7 @@ class FrameworkState:
                     continue
                 try:
                     tool_registry.register_from_file(py_file)
-                except Exception as e:
+                except (ImportError, SyntaxError, OSError, AttributeError) as e:
                     logger.warning("Failed to load tool from %s: %s", py_file, e)
 
         agent_registry = AgentRegistry()
@@ -170,7 +170,7 @@ class FrameworkState:
                                 and obj is not BaseAgentWrapper
                             ):
                                 agent_registry.register(name, obj)
-                except Exception as e:
+                except (ImportError, SyntaxError, OSError, AttributeError) as e:
                     logger.warning("Failed to load agent from %s: %s", py_file, e)
 
         return cls(
@@ -487,7 +487,10 @@ class FrameworkState:
                     "metrics": result.metrics if hasattr(result, "metrics") else None,
                 }
             return {"success": True, "content": str(result)}
+        except (TypeError, ValueError, KeyError) as e:
+            return {"success": False, "error": str(e)}
         except Exception as e:
+            logger.error("Unexpected error in run_direct_experiment: %s", e, exc_info=True)
             return {"success": False, "error": str(e)}
 
     # ── Rollback ────────────────────────────────────────────
@@ -564,15 +567,23 @@ class FrameworkState:
                     self.pipeline_def.default_retry = previous_policy
 
             return MutationResult(success=True)
-        except Exception as e:
+        except (OSError, KeyError, TypeError, ValueError) as e:
+            logger.error("Rollback failed for %s: %s", mutation.mutation_type, e)
             return MutationResult(success=False, errors=[str(e)])
 
     def _run_test(self, test_code: str) -> Any:
-        """Run test code and return a ValidationResult-like object."""
+        """Run test code and return a ValidationResult-like object.
+
+        Warning: executes arbitrary code. The MutationValidator should be
+        called first to screen for blocked imports.
+        """
         from ganglion.state.validator import ValidationResult
 
         try:
-            exec(test_code, {"__builtins__": __builtins__})
+            exec(test_code, {"__builtins__": __builtins__})  # noqa: S102
             return ValidationResult(is_passed=True)
+        except (AssertionError, TypeError, ValueError, KeyError, AttributeError) as e:
+            return ValidationResult(is_passed=False, errors=[f"Test failed: {e}"])
         except Exception as e:
-            return ValidationResult(is_passed=False, errors=[str(e)])
+            logger.error("Unexpected error running test code: %s", e)
+            return ValidationResult(is_passed=False, errors=[f"Test error: {e}"])
