@@ -1,5 +1,8 @@
 """Tests for Layer 1: Runtime."""
 
+from unittest.mock import AsyncMock, MagicMock
+
+from ganglion.runtime.agent import SimpleAgent
 from ganglion.runtime.coerce import (
     CoercionPipeline,
     coerce_empty_to_list,
@@ -115,6 +118,21 @@ class TestCoercionFunctions:
         assert modified is True
         assert abs(value - 3.14) < 0.001
 
+    def test_coerce_json_strings_invalid_json(self):
+        value, modified = coerce_json_strings("arg", "{bad json", None)
+        assert modified is False
+        assert value == "{bad json"
+
+    def test_coerce_string_numbers_invalid_int(self):
+        value, modified = coerce_string_numbers("arg", "not_a_number", int)
+        assert modified is False
+        assert value == "not_a_number"
+
+    def test_coerce_string_numbers_invalid_float(self):
+        value, modified = coerce_string_numbers("arg", "not_a_float", float)
+        assert modified is False
+        assert value == "not_a_float"
+
 
 class TestCoercionPipeline:
     def test_default_pipeline(self):
@@ -138,3 +156,258 @@ class TestCoercionPipeline:
         pipeline = CoercionPipeline()
         result = pipeline.apply({"x": 42, "y": "hello"})
         assert result == {"x": 42, "y": "hello"}
+
+
+def _make_llm_client(**kwargs):
+    """Create a mock LLMClient."""
+    client = MagicMock()
+    client.chat_completion = AsyncMock(**kwargs)
+    return client
+
+
+class TestSimpleAgent:
+    async def test_no_tool_calls_returns_early(self):
+        llm = _make_llm_client(return_value={"content": "Hello!", "finish_reason": "stop"})
+        agent = SimpleAgent(
+            llm_client=llm,
+            system_prompt="You are a test agent.",
+            tools_schema=[],
+            tool_handlers={},
+        )
+        result = await agent.run()
+        assert isinstance(result, AgentResult)
+        assert result.success is False
+        assert result.raw_text == "Hello!"
+        assert result.turns_used == 1
+
+    async def test_tool_call_then_finish(self):
+        tool_response = {
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "tc_1",
+                    "function": {
+                        "name": "finish",
+                        "arguments": '{"success": true, "summary": "done"}',
+                    },
+                }
+            ],
+        }
+        llm = _make_llm_client(return_value=tool_response)
+        agent = SimpleAgent(
+            llm_client=llm,
+            system_prompt="Test",
+            tools_schema=[{"type": "function", "function": {"name": "finish"}}],
+            tool_handlers={"finish": lambda **kw: kw},
+        )
+        result = await agent.run()
+        assert result.success is True
+        assert result.turns_used == 1
+
+    async def test_regular_tool_then_finish(self):
+        call_count = 0
+
+        async def mock_completion(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "tc_1",
+                            "function": {"name": "my_tool", "arguments": '{"x": 42}'},
+                        }
+                    ],
+                }
+            return {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "tc_2",
+                        "function": {
+                            "name": "finish",
+                            "arguments": '{"success": true, "result": 42}',
+                        },
+                    }
+                ],
+            }
+
+        llm = MagicMock()
+        llm.chat_completion = mock_completion
+
+        def my_tool(x=0):
+            return f"result: {x}"
+
+        agent = SimpleAgent(
+            llm_client=llm,
+            system_prompt="Test",
+            tools_schema=[],
+            tool_handlers={"my_tool": my_tool, "finish": lambda **kw: kw},
+        )
+        result = await agent.run()
+        assert result.success is True
+        assert result.turns_used == 2
+
+    async def test_max_turns_reached(self):
+        tool_response = {
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "tc_1",
+                    "function": {"name": "my_tool", "arguments": "{}"},
+                }
+            ],
+        }
+        llm = _make_llm_client(return_value=tool_response)
+        agent = SimpleAgent(
+            llm_client=llm,
+            system_prompt="Test",
+            tools_schema=[],
+            tool_handlers={"my_tool": lambda: "ok"},
+            max_turns=2,
+        )
+        result = await agent.run()
+        assert result.success is False
+        assert result.turns_used == 2
+        assert "Max turns" in result.raw_text
+
+    async def test_unknown_tool(self):
+        call_count = 0
+
+        async def mock_completion(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "tc_1",
+                            "function": {"name": "unknown_tool", "arguments": "{}"},
+                        }
+                    ],
+                }
+            return {"content": "gave up", "finish_reason": "stop"}
+
+        llm = MagicMock()
+        llm.chat_completion = mock_completion
+        agent = SimpleAgent(
+            llm_client=llm,
+            system_prompt="Test",
+            tools_schema=[],
+            tool_handlers={"finish": lambda **kw: kw},
+            max_turns=3,
+        )
+        result = await agent.run()
+        assert result.turns_used == 2
+
+    async def test_tool_exception(self):
+        call_count = 0
+
+        async def mock_completion(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "tc_1",
+                            "function": {"name": "bad_tool", "arguments": "{}"},
+                        }
+                    ],
+                }
+            return {"content": "recovered", "finish_reason": "stop"}
+
+        def bad_tool():
+            raise ValueError("tool exploded")
+
+        llm = MagicMock()
+        llm.chat_completion = mock_completion
+        agent = SimpleAgent(
+            llm_client=llm,
+            system_prompt="Test",
+            tools_schema=[],
+            tool_handlers={"bad_tool": bad_tool, "finish": lambda **kw: kw},
+            max_turns=3,
+        )
+        result = await agent.run()
+        assert result.turns_used == 2
+
+    async def test_invalid_json_arguments(self):
+        call_count = 0
+
+        async def mock_completion(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "tc_1",
+                            "function": {"name": "my_tool", "arguments": "not valid json"},
+                        }
+                    ],
+                }
+            return {"content": "done", "finish_reason": "stop"}
+
+        llm = MagicMock()
+        llm.chat_completion = mock_completion
+        agent = SimpleAgent(
+            llm_client=llm,
+            system_prompt="Test",
+            tools_schema=[],
+            tool_handlers={"my_tool": lambda: "ok", "finish": lambda **kw: kw},
+            max_turns=3,
+        )
+        result = await agent.run()
+        assert result.turns_used == 2
+
+    async def test_context_messages(self):
+        llm = _make_llm_client(return_value={"content": "Hello!", "finish_reason": "stop"})
+        agent = SimpleAgent(
+            llm_client=llm,
+            system_prompt="Test",
+            tools_schema=[],
+            tool_handlers={},
+            context_messages=[{"role": "user", "content": "context msg"}],
+        )
+        assert len(agent.messages) == 2
+        assert agent.messages[1]["content"] == "context msg"
+
+    async def test_tool_returning_tool_output(self):
+        call_count = 0
+
+        async def mock_completion(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "tc_1",
+                            "function": {"name": "my_tool", "arguments": "{}"},
+                        }
+                    ],
+                }
+            return {"content": "done", "finish_reason": "stop"}
+
+        llm = MagicMock()
+        llm.chat_completion = mock_completion
+
+        class FakeOutput:
+            content = "tool output"
+            structured = {"key": "val"}
+
+        agent = SimpleAgent(
+            llm_client=llm,
+            system_prompt="Test",
+            tools_schema=[],
+            tool_handlers={"my_tool": lambda: FakeOutput(), "finish": lambda **kw: kw},
+            max_turns=3,
+        )
+        result = await agent.run()
+        assert result.turns_used == 2

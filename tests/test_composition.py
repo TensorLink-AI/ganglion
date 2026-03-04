@@ -1,5 +1,10 @@
 """Tests for Layer 2: Composition."""
 
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from ganglion.composition.base_agent import BaseAgentWrapper
 from ganglion.composition.prompt import PromptBuilder
 from ganglion.composition.tool_registry import (
     _infer_schema,
@@ -9,6 +14,7 @@ from ganglion.composition.tool_registry import (
     tool,
 )
 from ganglion.composition.tool_returns import ExperimentResult, ToolOutput, ValidationResult
+from ganglion.runtime.types import AgentResult
 
 
 class TestToolReturns:
@@ -129,3 +135,53 @@ class TestPromptBuilder:
     def test_section_names(self):
         builder = PromptBuilder().section("a", "A").section("b", "B").section("c", "C")
         assert builder.section_names() == ["a", "b", "c"]
+
+
+class TestBaseAgentWrapper:
+    def test_build_system_prompt_not_implemented(self):
+        agent = BaseAgentWrapper()
+        with pytest.raises(NotImplementedError):
+            agent.build_system_prompt({})
+
+    def test_build_tools_not_implemented(self):
+        agent = BaseAgentWrapper()
+        with pytest.raises(NotImplementedError):
+            agent.build_tools({})
+
+    def test_build_context_default(self):
+        agent = BaseAgentWrapper()
+        assert agent.build_context({}) == []
+
+    def test_post_process_default(self):
+        agent = BaseAgentWrapper()
+        result = AgentResult(success=True, raw_text="done")
+        assert agent.post_process(result, {}) is result
+
+    def test_describe(self):
+        agent = BaseAgentWrapper(max_turns=10, temperature=0.5, model="gpt-4")
+        desc = agent.describe()
+        assert desc["class"] == "BaseAgentWrapper"
+        assert desc["max_turns"] == 10
+        assert desc["temperature"] == 0.5
+        assert desc["model"] == "gpt-4"
+
+    async def test_run_without_llm_client_raises(self):
+        agent = BaseAgentWrapper()
+        agent.build_system_prompt = MagicMock(return_value="prompt")
+        agent.build_tools = MagicMock(return_value=([], {}))
+        with pytest.raises(RuntimeError, match="llm_client"):
+            await agent.run({})
+
+    async def test_run_with_llm_client(self):
+        mock_llm = MagicMock()
+        mock_llm.chat_completion = AsyncMock(
+            return_value={"content": "done", "finish_reason": "stop"}
+        )
+        agent = BaseAgentWrapper(llm_client=mock_llm, extra_system_context="extra info")
+        agent.build_system_prompt = MagicMock(return_value="You are a test agent.")
+        agent.build_tools = MagicMock(return_value=([], {}))
+        agent.build_context = MagicMock(return_value=[{"role": "user", "content": "hi"}])
+        result = await agent.run({"task": "test"})
+        assert isinstance(result, AgentResult)
+        agent.build_system_prompt.assert_called_once_with({"task": "test"})
+        agent.build_tools.assert_called_once_with({"task": "test"})

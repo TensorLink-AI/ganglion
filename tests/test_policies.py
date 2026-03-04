@@ -1,7 +1,12 @@
 """Tests for Layer 4: Policies."""
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
+from ganglion.policies.meta import MetaStrategy
+from ganglion.policies.presets import AGGRESSIVE_PRESET, SIMPLE_PRESET, SN50_PRESET
 from ganglion.policies.retry import (
     AttemptConfig,
     EscalatingRetry,
@@ -151,3 +156,79 @@ class TestOutputHashStallDetector:
         detector = OutputHashStallDetector(max_repeats=1)
         assert detector.is_stalled(0, make_result(raw_text="same")) is False
         assert detector.is_stalled(1, make_result(raw_text="same")) is True
+
+
+class TestPresets:
+    def test_sn50_preset_has_default_retry(self):
+        assert "default_retry" in SN50_PRESET
+        assert isinstance(SN50_PRESET["default_retry"], EscalatingRetry)
+
+    def test_simple_preset_has_fixed_retry(self):
+        assert "default_retry" in SIMPLE_PRESET
+        assert isinstance(SIMPLE_PRESET["default_retry"], FixedRetry)
+
+    def test_aggressive_preset_has_model_escalation(self):
+        assert "default_retry" in AGGRESSIVE_PRESET
+        assert isinstance(AGGRESSIVE_PRESET["default_retry"], ModelEscalationRetry)
+
+
+class TestMetaStrategy:
+    async def test_no_history_returns_fixed(self):
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=[])
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, FixedRetry)
+
+    async def test_no_matching_stage_returns_fixed(self):
+        run = SimpleNamespace(results={"other_stage": make_result()})
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=[run])
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, FixedRetry)
+
+    async def test_high_success_low_attempts(self):
+        results = [
+            SimpleNamespace(results={"train": SimpleNamespace(success=True, attempts=1)})
+            for _ in range(10)
+        ]
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=results)
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, FixedRetry)
+        assert policy.max_attempts == 2
+
+    async def test_moderate_success_rate(self):
+        results = []
+        for i in range(10):
+            results.append(
+                SimpleNamespace(results={"train": SimpleNamespace(success=i < 6, attempts=3)})
+            )
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=results)
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, EscalatingRetry)
+
+    async def test_low_success_rate(self):
+        results = []
+        for i in range(10):
+            results.append(
+                SimpleNamespace(results={"train": SimpleNamespace(success=i < 2, attempts=5)})
+            )
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=results)
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, EscalatingRetry)
+        assert policy.max_attempts == 8
+
+    async def test_run_without_results_attr(self):
+        run = SimpleNamespace()  # no .results attribute
+        persistence = AsyncMock()
+        persistence.load_run_history = AsyncMock(return_value=[run])
+        strategy = MetaStrategy(persistence)
+        policy = await strategy.suggest_policy("train")
+        assert isinstance(policy, FixedRetry)
