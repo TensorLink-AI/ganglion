@@ -2,26 +2,24 @@
 
 import pytest
 
-from ganglion.orchestration.pipeline import PipelineDef, StageDef
-from ganglion.orchestration.task_context import (
-    TaskContext,
-    SubnetConfig,
-    MetricDef,
-    TaskDef,
-    OutputSpec,
-)
-from ganglion.orchestration.events import (
-    StageStarted,
-    StageCompleted,
-    StageRetry,
-    StageSkipped,
-)
 from ganglion.orchestration.errors import (
     AgentError,
     EnvironmentError,
     InfrastructureError,
     PipelineOperationError,
     PipelineValidationError,
+)
+from ganglion.orchestration.events import (
+    StageCompleted,
+    StageStarted,
+)
+from ganglion.orchestration.pipeline import PipelineDef, StageDef
+from ganglion.orchestration.task_context import (
+    MetricDef,
+    OutputSpec,
+    SubnetConfig,
+    TaskContext,
+    TaskDef,
 )
 
 

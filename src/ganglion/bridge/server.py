@@ -12,8 +12,8 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from ganglion.state.framework_state import FrameworkState
 from ganglion.knowledge.types import KnowledgeQuery
+from ganglion.state.framework_state import FrameworkState
 
 logger = logging.getLogger(__name__)
 

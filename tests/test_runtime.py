@@ -1,16 +1,14 @@
 """Tests for Layer 1: Runtime."""
 
-import json
-import pytest
 
-from ganglion.runtime.types import AgentResult, ToolCall, ToolResult
 from ganglion.runtime.coerce import (
     CoercionPipeline,
-    coerce_json_strings,
     coerce_empty_to_list,
+    coerce_json_strings,
     coerce_string_bools,
     coerce_string_numbers,
 )
+from ganglion.runtime.types import AgentResult, ToolCall, ToolResult
 
 
 class TestAgentResult:

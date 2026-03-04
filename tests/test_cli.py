@@ -1,9 +1,8 @@
 """Tests for the CLI entry point."""
 
 import json
+
 import pytest
-from unittest.mock import patch, MagicMock
-from io import StringIO
 
 from ganglion.__main__ import main
 

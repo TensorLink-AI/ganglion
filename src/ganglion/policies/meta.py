@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from ganglion.policies.retry import (
-    AttemptConfig,
     EscalatingRetry,
     FixedRetry,
     RetryPolicy,

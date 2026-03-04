@@ -4,10 +4,10 @@ import pytest
 
 from ganglion.policies.retry import (
     AttemptConfig,
-    NoRetry,
-    FixedRetry,
     EscalatingRetry,
+    FixedRetry,
     ModelEscalationRetry,
+    NoRetry,
 )
 from ganglion.policies.stall import (
     ConfigComparisonStallDetector,

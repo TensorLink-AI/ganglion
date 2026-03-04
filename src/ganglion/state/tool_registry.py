@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
-import inspect
 import logging
 from pathlib import Path
 from typing import Any, Callable
 
-from ganglion.composition.tool_registry import ToolDef, _infer_schema
+from ganglion.composition.tool_registry import ToolDef
 from ganglion.orchestration.errors import ToolAlreadyRegisteredError, ToolNotFoundError
 
 logger = logging.getLogger(__name__)

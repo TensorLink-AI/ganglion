@@ -2,19 +2,19 @@
 
 import pytest
 
-from ganglion.orchestration.orchestrator import PipelineOrchestrator, PipelineResult, StageResult
+from ganglion.composition.base_agent import BaseAgentWrapper
+from ganglion.orchestration.events import PipelineEvent
+from ganglion.orchestration.orchestrator import PipelineOrchestrator
 from ganglion.orchestration.pipeline import PipelineDef, StageDef
 from ganglion.orchestration.task_context import (
-    TaskContext,
-    SubnetConfig,
     MetricDef,
-    TaskDef,
     OutputSpec,
+    SubnetConfig,
+    TaskContext,
+    TaskDef,
 )
-from ganglion.orchestration.events import PipelineEvent, StageStarted, StageCompleted
-from ganglion.composition.base_agent import BaseAgentWrapper
+from ganglion.policies.retry import FixedRetry
 from ganglion.runtime.types import AgentResult
-from ganglion.policies.retry import FixedRetry, NoRetry
 
 
 def make_config() -> SubnetConfig:

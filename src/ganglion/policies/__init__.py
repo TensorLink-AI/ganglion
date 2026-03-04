@@ -1,12 +1,12 @@
 from ganglion.policies.retry import (
-    RetryPolicy,
     AttemptConfig,
-    NoRetry,
-    FixedRetry,
     EscalatingRetry,
+    FixedRetry,
     ModelEscalationRetry,
+    NoRetry,
+    RetryPolicy,
 )
-from ganglion.policies.stall import StallDetector, ConfigComparisonStallDetector
+from ganglion.policies.stall import ConfigComparisonStallDetector, StallDetector
 
 __all__ = [
     "RetryPolicy",

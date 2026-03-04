@@ -1,17 +1,18 @@
 """Tests for the Knowledge Store."""
 
-import pytest
 import tempfile
 from pathlib import Path
 
-from ganglion.knowledge.types import Pattern, Antipattern, KnowledgeQuery
-from ganglion.knowledge.store import KnowledgeStore
-from ganglion.knowledge.backends.json_backend import JsonKnowledgeBackend
-from ganglion.knowledge.backends.sqlite_backend import SqliteKnowledgeBackend
+import pytest
+
 from ganglion.knowledge.backends.federated import (
     FederatedKnowledgeBackend,
     FilesystemPeerDiscovery,
 )
+from ganglion.knowledge.backends.json_backend import JsonKnowledgeBackend
+from ganglion.knowledge.backends.sqlite_backend import SqliteKnowledgeBackend
+from ganglion.knowledge.store import KnowledgeStore
+from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
 
 
 @pytest.fixture

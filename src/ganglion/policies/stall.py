@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Protocol
+from typing import Callable, Protocol
 
 from ganglion.runtime.types import AgentResult
 

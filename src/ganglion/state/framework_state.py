@@ -6,8 +6,9 @@ import asyncio
 import importlib.util
 import logging
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
+from ganglion.knowledge.store import KnowledgeStore
 from ganglion.orchestration.errors import (
     ConcurrentMutationError,
     PipelineOperationError,
@@ -20,7 +21,6 @@ from ganglion.orchestration.orchestrator import (
 )
 from ganglion.orchestration.pipeline import PipelineDef
 from ganglion.orchestration.task_context import SubnetConfig, TaskContext
-from ganglion.knowledge.store import KnowledgeStore
 from ganglion.state.agent_registry import AgentRegistry
 from ganglion.state.mutation import Mutation, MutationResult
 from ganglion.state.tool_registry import ToolRegistry
@@ -161,8 +161,9 @@ class FrameworkState:
                     if module_spec and module_spec.loader:
                         module = importlib.util.module_from_spec(module_spec)
                         module_spec.loader.exec_module(module)
-                        from ganglion.composition.base_agent import BaseAgentWrapper
                         import inspect as _inspect
+
+                        from ganglion.composition.base_agent import BaseAgentWrapper
 
                         for name, obj in _inspect.getmembers(module, _inspect.isclass):
                             if (

@@ -1,16 +1,15 @@
 """Tests for Layer 2: Composition."""
 
-import pytest
 
-from ganglion.composition.tool_returns import ToolOutput, ExperimentResult, ValidationResult
-from ganglion.composition.tool_registry import (
-    tool,
-    build_toolset,
-    get_all_tools,
-    clear_global_registry,
-    _infer_schema,
-)
 from ganglion.composition.prompt import PromptBuilder
+from ganglion.composition.tool_registry import (
+    _infer_schema,
+    build_toolset,
+    clear_global_registry,
+    get_all_tools,
+    tool,
+)
+from ganglion.composition.tool_returns import ExperimentResult, ToolOutput, ValidationResult
 
 
 class TestToolReturns:

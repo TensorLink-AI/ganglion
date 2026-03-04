@@ -6,9 +6,9 @@ import json
 import logging
 from typing import Any, Callable
 
-from ganglion.runtime.types import AgentResult, ToolCall, ToolResult
 from ganglion.runtime.coerce import CoercionPipeline
 from ganglion.runtime.llm_client import LLMClient
+from ganglion.runtime.types import AgentResult, ToolCall, ToolResult
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,7 @@
 """Tests for the centralized configuration module."""
 
 import os
+
 import pytest
 
 from ganglion.config import GanglionConfig

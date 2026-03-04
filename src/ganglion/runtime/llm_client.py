@@ -10,7 +10,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 try:
-    from openai import AsyncOpenAI, APIError, RateLimitError, APIConnectionError
+    from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 except ImportError:
     AsyncOpenAI = None  # type: ignore[assignment, misc]
     APIError = Exception  # type: ignore[assignment, misc]

@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from ganglion.runtime.agent import SimpleAgent
+from ganglion.runtime.coerce import CoercionPipeline
 from ganglion.runtime.llm_client import LLMClient
 from ganglion.runtime.types import AgentResult
-from ganglion.runtime.coerce import CoercionPipeline
 
 
 class TaskContext:

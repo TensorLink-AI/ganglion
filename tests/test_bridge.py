@@ -1,17 +1,16 @@
 """Tests for the HTTP bridge server (Layer 5)."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 import ganglion.bridge.server as srv
-from ganglion.bridge.server import app, configure
-from ganglion.state.framework_state import FrameworkState
+from ganglion.bridge.server import app
 from ganglion.orchestration.pipeline import PipelineDef, StageDef
-from ganglion.orchestration.task_context import SubnetConfig, MetricDef, OutputSpec, TaskDef
-from ganglion.state.tool_registry import ToolRegistry
 from ganglion.state.agent_registry import AgentRegistry
+from ganglion.state.framework_state import FrameworkState
+from ganglion.state.tool_registry import ToolRegistry
 
 
 def make_mock_state() -> MagicMock:

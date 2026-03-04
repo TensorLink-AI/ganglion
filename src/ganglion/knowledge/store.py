@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
 from ganglion.knowledge.backends.base import KnowledgeBackend
+from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
 
 
 class KnowledgeStore:

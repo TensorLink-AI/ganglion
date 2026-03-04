@@ -7,18 +7,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Protocol
 
-from ganglion.orchestration.pipeline import PipelineDef, StageDef
-from ganglion.orchestration.task_context import TaskContext
+from ganglion.orchestration.errors import PipelineValidationError
 from ganglion.orchestration.events import (
+    PipelineCompleted,
     PipelineEvent,
     PipelineStarted,
-    PipelineCompleted,
-    StageStarted,
     StageCompleted,
     StageRetry,
     StageSkipped,
+    StageStarted,
 )
-from ganglion.orchestration.errors import PipelineValidationError
+from ganglion.orchestration.pipeline import PipelineDef, StageDef
+from ganglion.orchestration.task_context import TaskContext
 from ganglion.runtime.types import AgentResult
 
 logger = logging.getLogger(__name__)

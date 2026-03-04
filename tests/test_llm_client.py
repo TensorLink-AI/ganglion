@@ -1,7 +1,6 @@
 """Tests for the LLM client with retry logic."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 from ganglion.runtime.llm_client import LLMClient
 
