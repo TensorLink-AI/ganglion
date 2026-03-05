@@ -1561,6 +1561,7 @@ class TestBuildMCPTools:
         state = self._make_state_with_build()
         register_compute_tools(state)
         assert state.tool_registry.has("write_dockerfile")
+        assert state.tool_registry.has("validate_dockerfile")
         assert state.tool_registry.has("build_image")
 
     @pytest.mark.asyncio
