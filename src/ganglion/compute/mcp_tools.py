@@ -188,7 +188,8 @@ def register_compute_tools(state: FrameworkState) -> None:
                     },
                     "dependencies": {
                         "type": "string",
-                        "description": "Comma-separated pip packages (e.g. 'torch,transformers,wandb')",
+                        "description": "Comma-separated pip packages "
+                        "(e.g. 'torch,transformers,wandb')",
                     },
                     "entrypoint": {
                         "type": "string",

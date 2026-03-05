@@ -169,7 +169,7 @@ class DockerBuildBackend:
                     proc.communicate(),
                     timeout=self._config.build_timeout_seconds,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return BuildResult(
                     image_ref="",
                     success=False,
@@ -225,8 +225,8 @@ class DockerBuildBackend:
                     stderr=asyncio.subprocess.PIPE,
                 )
                 await login_proc.communicate(input=self._config.registry_token.encode())
-            except FileNotFoundError:
-                raise RuntimeError("Docker is not installed or not in PATH")
+            except FileNotFoundError as e:
+                raise RuntimeError("Docker is not installed or not in PATH") from e
 
             if login_proc.returncode != 0:
                 raise RuntimeError(f"Docker login to {self._config.registry} failed")
@@ -243,12 +243,12 @@ class DockerBuildBackend:
                 proc.communicate(),
                 timeout=self._config.build_timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError as e:
             raise RuntimeError(
                 f"Push timed out after {self._config.build_timeout_seconds}s"
-            )
-        except FileNotFoundError:
-            raise RuntimeError("Docker is not installed or not in PATH")
+            ) from e
+        except FileNotFoundError as e:
+            raise RuntimeError("Docker is not installed or not in PATH") from e
 
         if proc.returncode != 0:
             error_msg = (stderr or b"").decode(errors="replace")[-500:]

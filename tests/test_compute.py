@@ -15,12 +15,11 @@ from ganglion.compute.backends.docker_build import (
     DockerBuildConfig,
     _match_glob,
 )
-from ganglion.compute.mcp_tools import _render_dockerfile
 from ganglion.compute.backends.local import LocalBackend
 from ganglion.compute.backends.runpod import RunPodBackend, RunPodConfig
 from ganglion.compute.backends.ssh import SSHBackend, SSHConfig
 from ganglion.compute.job_manager import JobManager
-from ganglion.compute.mcp_tools import register_compute_tools
+from ganglion.compute.mcp_tools import _render_dockerfile, register_compute_tools
 from ganglion.compute.protocol import BuildResult, JobHandle, JobResult, JobSpec, JobStatus
 from ganglion.compute.router import ComputeRoute, ComputeRouter
 
@@ -1505,8 +1504,6 @@ class TestDockerBuildBackend:
 
 class TestRenderDockerfile:
     def test_basic(self):
-        from ganglion.compute.mcp_tools import _render_dockerfile
-
         result = _render_dockerfile("python:3.11", ["torch", "numpy"], "python train.py")
         assert "FROM python:3.11" in result
         assert "pip install --no-cache-dir torch numpy" in result
@@ -1515,21 +1512,15 @@ class TestRenderDockerfile:
         assert "train.py" in result
 
     def test_no_dependencies(self):
-        from ganglion.compute.mcp_tools import _render_dockerfile
-
         result = _render_dockerfile("python:3.11", [], "python train.py")
         assert "FROM python:3.11" in result
         assert "pip install" not in result
 
     def test_custom_workdir(self):
-        from ganglion.compute.mcp_tools import _render_dockerfile
-
         result = _render_dockerfile("python:3.11", [], "echo hi", workdir="/workspace")
         assert "WORKDIR /workspace" in result
 
     def test_env_vars(self):
-        from ganglion.compute.mcp_tools import _render_dockerfile
-
         result = _render_dockerfile(
             "python:3.11", [], "echo hi", env={"CUDA_VISIBLE_DEVICES": "0"}
         )
