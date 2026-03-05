@@ -13,7 +13,7 @@ from ganglion.orchestration.events import (
     StageCompleted,
     StageStarted,
 )
-from ganglion.orchestration.pipeline import PipelineDef, StageDef
+from ganglion.orchestration.pipeline import PipelineDef, StageDef, ToolStageDef
 from ganglion.orchestration.task_context import (
     MetricDef,
     OutputSpec,
@@ -290,3 +290,125 @@ class TestErrors:
     def test_error_hierarchy(self):
         assert issubclass(EnvironmentError, AgentError)
         assert issubclass(PipelineValidationError, AgentError)
+
+
+class TestToolStageDef:
+    def test_to_dict(self):
+        async def my_fn(task):
+            pass
+
+        s = ToolStageDef(
+            name="fetch",
+            fn=my_fn,
+            depends_on=["init"],
+            input_keys=["config"],
+            output_keys=["data"],
+        )
+        d = s.to_dict()
+        assert d["name"] == "fetch"
+        assert "my_fn" in d["fn"]
+        assert d["depends_on"] == ["init"]
+
+    def test_defaults(self):
+        async def noop(task):
+            pass
+
+        s = ToolStageDef(name="step", fn=noop)
+        assert s.depends_on == []
+        assert s.is_optional is False
+        assert s.retry is None
+
+
+class TestPipelineDefWithToolStages:
+    def test_validate_mixed_pipeline(self):
+        async def fetch(task):
+            pass
+
+        p = PipelineDef(
+            name="mixed",
+            stages=[
+                ToolStageDef(name="fetch", fn=fetch, output_keys=["data"]),
+                StageDef(
+                    name="plan",
+                    agent="Planner",
+                    depends_on=["fetch"],
+                    input_keys=["data"],
+                    output_keys=["plan"],
+                ),
+            ],
+        )
+        assert p.validate() == []
+
+    def test_copy_preserves_tool_stages(self):
+        async def fetch(task):
+            pass
+
+        p = PipelineDef(
+            name="test",
+            stages=[
+                ToolStageDef(name="fetch", fn=fetch),
+                StageDef(name="plan", agent="Planner"),
+            ],
+        )
+        copy = p.copy()
+        assert isinstance(copy.stages[0], ToolStageDef)
+        assert isinstance(copy.stages[1], StageDef)
+        assert copy.stages[0].fn is fetch
+
+    def test_topological_order_with_tool_stages(self):
+        async def fetch(task):
+            pass
+
+        p = PipelineDef(
+            name="test",
+            stages=[
+                StageDef(name="plan", agent="Planner", depends_on=["fetch"]),
+                ToolStageDef(name="fetch", fn=fetch),
+            ],
+        )
+        order = p._topological_order()
+        names = [s.name for s in order]
+        assert names.index("fetch") < names.index("plan")
+
+    def test_apply_add_tool_stage(self):
+        async def validate(task):
+            pass
+
+        p = PipelineDef(name="test", stages=[StageDef(name="a", agent="A")])
+        p2 = p.apply_operation({
+            "op": "add_stage",
+            "stage": {"name": "validate", "fn": validate, "depends_on": ["a"]},
+        })
+        assert len(p2.stages) == 2
+        assert isinstance(p2.stages[1], ToolStageDef)
+        assert p2.stages[1].name == "validate"
+
+    def test_apply_remove_tool_stage(self):
+        async def fetch(task):
+            pass
+
+        p = PipelineDef(
+            name="test",
+            stages=[
+                ToolStageDef(name="fetch", fn=fetch),
+                StageDef(name="plan", agent="Planner", depends_on=["fetch"]),
+            ],
+        )
+        p2 = p.apply_operation({"op": "remove_stage", "stage_name": "fetch"})
+        assert len(p2.stages) == 1
+        assert p2.stages[0].depends_on == []
+
+    def test_get_stage_returns_tool_stage(self):
+        async def fetch(task):
+            pass
+
+        p = PipelineDef(
+            name="test",
+            stages=[
+                ToolStageDef(name="fetch", fn=fetch),
+                StageDef(name="plan", agent="Planner"),
+            ],
+        )
+        stage = p.get_stage("fetch")
+        assert isinstance(stage, ToolStageDef)
+        assert stage.fn is fetch

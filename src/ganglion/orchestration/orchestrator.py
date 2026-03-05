@@ -19,7 +19,7 @@ from ganglion.orchestration.events import (
     StageSkipped,
     StageStarted,
 )
-from ganglion.orchestration.pipeline import PipelineDef, StageDef
+from ganglion.orchestration.pipeline import PipelineDef, StageDef, ToolStageDef
 from ganglion.orchestration.task_context import TaskContext
 from ganglion.runtime.types import AgentResult
 
@@ -193,8 +193,63 @@ class PipelineOrchestrator:
         self.emit(PipelineCompleted(pipeline_name=self.pipeline.name, success=True))
         return result
 
-    async def _execute_stage(self, stage_def: StageDef, task: TaskContext) -> StageResult:
-        """Run a single stage, delegating retry to the RetryPolicy."""
+    async def _execute_stage(self, stage_def: StageDef | ToolStageDef, task: TaskContext) -> StageResult:
+        """Run a single stage — dispatches to agent or tool execution."""
+        if isinstance(stage_def, ToolStageDef):
+            return await self._execute_tool_stage(stage_def, task)
+        return await self._execute_agent_stage(stage_def, task)
+
+    async def _execute_tool_stage(self, stage_def: ToolStageDef, task: TaskContext) -> StageResult:
+        """Run a deterministic tool stage — no LLM, no knowledge injection."""
+        policy = stage_def.retry or self.pipeline.default_retry
+        attempt = 0
+        last_result: AgentResult | None = None
+
+        while True:
+            if policy is not None:
+                attempt_config = policy.configure_attempt(attempt, last_result)
+                if attempt_config is None:
+                    break
+            else:
+                if attempt > 0:
+                    break
+
+            try:
+                result = await stage_def.fn(task)
+                last_result = result
+
+                if result.success:
+                    await self._record_knowledge(stage_def, result, task, success=True)
+                    return StageResult(success=True, result=result, attempts=attempt + 1)
+            except Exception as e:
+                logger.error(
+                    "Tool stage '%s' attempt %d raised: %s",
+                    stage_def.name,
+                    attempt + 1,
+                    e,
+                    exc_info=True,
+                )
+                last_result = AgentResult(success=False, raw_text=str(e), turns_used=0)
+
+            attempt += 1
+            if policy is not None:
+                self.emit(
+                    StageRetry(
+                        stage=stage_def.name,
+                        attempt=attempt,
+                    )
+                )
+
+        await self._record_knowledge(stage_def, last_result, task, success=False)
+        return StageResult(
+            success=False,
+            result=last_result,
+            attempts=attempt,
+            error=last_result.raw_text if last_result else "No result",
+        )
+
+    async def _execute_agent_stage(self, stage_def: StageDef, task: TaskContext) -> StageResult:
+        """Run an agent stage, delegating retry to the RetryPolicy."""
         agent_cls = self._resolve_agent(stage_def.agent)
         if agent_cls is None:
             return StageResult(
@@ -286,7 +341,7 @@ class PipelineOrchestrator:
 
     async def _record_knowledge(
         self,
-        stage_def: StageDef,
+        stage_def: StageDef | ToolStageDef,
         result: AgentResult | None,
         task: TaskContext,
         success: bool,
@@ -311,28 +366,29 @@ class PipelineOrchestrator:
                     stage=stage_def.name,
                 )
 
-                # Record agent design pattern
-                agent_cls = self._resolve_agent(stage_def.agent)
-                if agent_cls is not None:
-                    try:
-                        agent_instance = agent_cls()
-                        fingerprint = agent_instance.design_fingerprint()
-                    except Exception:
-                        fingerprint = {"class": stage_def.agent}
-                    await self.knowledge.record_agent_design(
-                        AgentDesignPattern(
-                            capability=stage_def.name,
-                            agent_class=fingerprint.get("class", stage_def.agent),
-                            tools=fingerprint.get("tools", []),
-                            model=fingerprint.get("model"),
-                            metric_value=metric_value,
-                            metric_name=metric_name,
-                            fingerprint=fingerprint,
-                            stage=stage_def.name,
-                            source_bot=self.knowledge.bot_id
-                                if hasattr(self.knowledge, "bot_id") else None,
+                # Record agent design pattern (only for agent stages)
+                if isinstance(stage_def, StageDef):
+                    agent_cls = self._resolve_agent(stage_def.agent)
+                    if agent_cls is not None:
+                        try:
+                            agent_instance = agent_cls()
+                            fingerprint = agent_instance.design_fingerprint()
+                        except Exception:
+                            fingerprint = {"class": stage_def.agent}
+                        await self.knowledge.record_agent_design(
+                            AgentDesignPattern(
+                                capability=stage_def.name,
+                                agent_class=fingerprint.get("class", stage_def.agent),
+                                tools=fingerprint.get("tools", []),
+                                model=fingerprint.get("model"),
+                                metric_value=metric_value,
+                                metric_name=metric_name,
+                                fingerprint=fingerprint,
+                                stage=stage_def.name,
+                                source_bot=self.knowledge.bot_id
+                                    if hasattr(self.knowledge, "bot_id") else None,
+                            )
                         )
-                    )
             else:
                 await self.knowledge.record_failure(
                     capability=stage_def.name,

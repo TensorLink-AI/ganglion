@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,11 +34,44 @@ class StageDef:
 
 
 @dataclass
+class ToolStageDef:
+    """A pipeline stage that's a direct function call — no LLM involved.
+
+    Use for deterministic operations: data fetching, validation, scoring,
+    baseline computation, etc. The fn receives a TaskContext and returns
+    an AgentResult.
+    """
+
+    name: str
+    fn: Callable[..., Awaitable[Any]]
+    depends_on: list[str] = field(default_factory=list)
+    is_optional: bool = False
+    retry: Any | None = None
+    input_keys: list[str] = field(default_factory=list)
+    output_keys: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "fn": self.fn.__qualname__ if self.fn else None,
+            "retry": str(self.retry) if self.retry else None,
+            "is_optional": self.is_optional,
+            "depends_on": self.depends_on,
+            "input_keys": self.input_keys,
+            "output_keys": self.output_keys,
+        }
+
+
+# Union of stage types that PipelineDef accepts.
+AnyStage = StageDef | ToolStageDef
+
+
+@dataclass
 class PipelineDef:
     """Declarative definition of a multi-stage pipeline."""
 
     name: str
-    stages: list[StageDef]
+    stages: list[AnyStage]
     default_retry: Any | None = None
 
     def validate(self) -> list[str]:
@@ -87,20 +121,35 @@ class PipelineDef:
 
     def copy(self) -> PipelineDef:
         """Deep copy for safe mutation."""
+        copied: list[AnyStage] = []
+        for stage in self.stages:
+            if isinstance(stage, ToolStageDef):
+                copied.append(
+                    ToolStageDef(
+                        name=stage.name,
+                        fn=stage.fn,
+                        retry=stage.retry,
+                        is_optional=stage.is_optional,
+                        depends_on=list(stage.depends_on),
+                        input_keys=list(stage.input_keys),
+                        output_keys=list(stage.output_keys),
+                    )
+                )
+            else:
+                copied.append(
+                    StageDef(
+                        name=stage.name,
+                        agent=stage.agent,
+                        retry=stage.retry,
+                        is_optional=stage.is_optional,
+                        depends_on=list(stage.depends_on),
+                        input_keys=list(stage.input_keys),
+                        output_keys=list(stage.output_keys),
+                    )
+                )
         return PipelineDef(
             name=self.name,
-            stages=[
-                StageDef(
-                    name=stage.name,
-                    agent=stage.agent,
-                    retry=stage.retry,
-                    is_optional=stage.is_optional,
-                    depends_on=list(stage.depends_on),
-                    input_keys=list(stage.input_keys),
-                    output_keys=list(stage.output_keys),
-                )
-                for stage in self.stages
-            ],
+            stages=copied,
             default_retry=self.default_retry,
         )
 
@@ -116,7 +165,10 @@ class PipelineDef:
 
         if op["op"] == "add_stage":
             stage_dict = op["stage"]
-            new_stage = StageDef(**stage_dict)
+            if "fn" in stage_dict:
+                new_stage: AnyStage = ToolStageDef(**stage_dict)
+            else:
+                new_stage = StageDef(**stage_dict)
             if any(stage.name == new_stage.name for stage in mutated.stages):
                 raise PipelineOperationError(f"Stage '{new_stage.name}' already exists")
             mutated.stages.append(new_stage)
@@ -150,7 +202,7 @@ class PipelineDef:
 
         return mutated
 
-    def get_stage(self, name: str) -> StageDef | None:
+    def get_stage(self, name: str) -> AnyStage | None:
         """Find a stage by name."""
         return next((stage for stage in self.stages if stage.name == name), None)
 
@@ -184,7 +236,7 @@ class PipelineDef:
 
         return any(visit_state[node] == unvisited and dfs(node) for node in adjacency)
 
-    def _topological_order(self) -> list[StageDef]:
+    def _topological_order(self) -> list[AnyStage]:
         """Return stages in topological (dependency) order."""
         name_to_stage = {stage.name: stage for stage in self.stages}
         in_degree: dict[str, int] = {stage.name: 0 for stage in self.stages}

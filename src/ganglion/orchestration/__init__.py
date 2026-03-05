@@ -14,12 +14,13 @@ from ganglion.orchestration.events import (
     StageStarted,
 )
 from ganglion.orchestration.orchestrator import PipelineOrchestrator
-from ganglion.orchestration.pipeline import PipelineDef, StageDef
+from ganglion.orchestration.pipeline import PipelineDef, StageDef, ToolStageDef
 from ganglion.orchestration.task_context import TaskContext
 
 __all__ = [
     "PipelineDef",
     "StageDef",
+    "ToolStageDef",
     "PipelineOrchestrator",
     "TaskContext",
     "PipelineEvent",

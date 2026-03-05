@@ -5,7 +5,7 @@ import pytest
 from ganglion.composition.base_agent import BaseAgentWrapper
 from ganglion.orchestration.events import PipelineEvent
 from ganglion.orchestration.orchestrator import PipelineOrchestrator
-from ganglion.orchestration.pipeline import PipelineDef, StageDef
+from ganglion.orchestration.pipeline import PipelineDef, StageDef, ToolStageDef
 from ganglion.orchestration.task_context import (
     MetricDef,
     OutputSpec,
@@ -230,3 +230,118 @@ class TestPipelineOrchestrator:
 
         with pytest.raises(PipelineValidationError):
             await orchestrator.run(TaskContext(make_config()))
+
+    async def test_tool_stage_success(self):
+        async def fetch_data(task):
+            task.set("data", {"prices": [100, 200]}, stage="fetch_data")
+            return AgentResult(success=True, structured={"prices": [100, 200]}, raw_text="OK")
+
+        pipeline = PipelineDef(
+            name="test",
+            stages=[ToolStageDef(name="fetch", fn=fetch_data)],
+        )
+        orchestrator = PipelineOrchestrator(pipeline=pipeline, agents={})
+        result = await orchestrator.run(TaskContext(make_config()))
+        assert result.success is True
+        assert result.results["fetch"].success is True
+        assert result.results["fetch"].attempts == 1
+
+    async def test_tool_stage_failure(self):
+        async def bad_fetch(task):
+            return AgentResult(success=False, raw_text="Connection timeout")
+
+        pipeline = PipelineDef(
+            name="test",
+            stages=[ToolStageDef(name="fetch", fn=bad_fetch)],
+        )
+        orchestrator = PipelineOrchestrator(pipeline=pipeline, agents={})
+        result = await orchestrator.run(TaskContext(make_config()))
+        assert result.success is False
+        assert result.failed_stage == "fetch"
+
+    async def test_tool_stage_exception(self):
+        async def exploding_fetch(task):
+            raise RuntimeError("Network error")
+
+        pipeline = PipelineDef(
+            name="test",
+            stages=[ToolStageDef(name="fetch", fn=exploding_fetch)],
+        )
+        orchestrator = PipelineOrchestrator(pipeline=pipeline, agents={})
+        result = await orchestrator.run(TaskContext(make_config()))
+        assert result.success is False
+        assert "Network error" in result.results["fetch"].error
+
+    async def test_mixed_pipeline_tool_then_agent(self):
+        async def fetch_data(task):
+            task.set("data", {"prices": [100]}, stage="fetch_data")
+            return AgentResult(success=True, structured={"prices": [100]}, raw_text="OK")
+
+        pipeline = PipelineDef(
+            name="test",
+            stages=[
+                ToolStageDef(name="fetch", fn=fetch_data, output_keys=["data"]),
+                StageDef(
+                    name="plan",
+                    agent="SuccessAgent",
+                    depends_on=["fetch"],
+                    input_keys=["data"],
+                ),
+            ],
+        )
+        orchestrator = PipelineOrchestrator(
+            pipeline=pipeline,
+            agents={"SuccessAgent": SuccessAgent},
+        )
+        result = await orchestrator.run(TaskContext(make_config()))
+        assert result.success is True
+        assert result.results["fetch"].success is True
+        assert result.results["plan"].success is True
+
+    async def test_tool_stage_retry(self):
+        call_count = 0
+
+        async def flaky_fetch(task):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                return AgentResult(success=False, raw_text="Temporary failure")
+            return AgentResult(success=True, raw_text="OK")
+
+        pipeline = PipelineDef(
+            name="test",
+            stages=[
+                ToolStageDef(
+                    name="fetch",
+                    fn=flaky_fetch,
+                    retry=FixedRetry(max_attempts=3),
+                ),
+            ],
+        )
+        orchestrator = PipelineOrchestrator(pipeline=pipeline, agents={})
+        result = await orchestrator.run(TaskContext(make_config()))
+        assert result.success is True
+        assert result.results["fetch"].attempts == 2
+
+    async def test_tool_stage_events(self):
+        events: list[PipelineEvent] = []
+
+        async def fetch(task):
+            return AgentResult(success=True, raw_text="OK")
+
+        pipeline = PipelineDef(
+            name="test",
+            stages=[ToolStageDef(name="fetch", fn=fetch)],
+        )
+        orchestrator = PipelineOrchestrator(
+            pipeline=pipeline,
+            agents={},
+            event_handler=events.append,
+        )
+        await orchestrator.run(TaskContext(make_config()))
+
+        event_types = [type(e).__name__ for e in events]
+        assert "PipelineStarted" in event_types
+        assert "StageStarted" in event_types
+        assert "StageCompleted" in event_types
+        assert "PipelineCompleted" in event_types
