@@ -83,10 +83,12 @@ class SqliteKnowledgeBackend:
                 )
             """)
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_agent_designs_capability ON agent_designs(capability)"
+                "CREATE INDEX IF NOT EXISTS "
+                "idx_agent_designs_capability ON agent_designs(capability)"
             )
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_agent_designs_source_bot ON agent_designs(source_bot)"
+                "CREATE INDEX IF NOT EXISTS "
+                "idx_agent_designs_source_bot ON agent_designs(source_bot)"
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_agent_designs_timestamp ON agent_designs(timestamp)"

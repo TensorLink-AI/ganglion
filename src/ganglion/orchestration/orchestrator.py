@@ -193,7 +193,9 @@ class PipelineOrchestrator:
         self.emit(PipelineCompleted(pipeline_name=self.pipeline.name, success=True))
         return result
 
-    async def _execute_stage(self, stage_def: StageDef | ToolStageDef, task: TaskContext) -> StageResult:
+    async def _execute_stage(
+        self, stage_def: StageDef | ToolStageDef, task: TaskContext,
+    ) -> StageResult:
         """Run a single stage — dispatches to agent or tool execution."""
         if isinstance(stage_def, ToolStageDef):
             return await self._execute_tool_stage(stage_def, task)
