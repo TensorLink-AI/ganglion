@@ -285,7 +285,11 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
             "properties": {
                 "name": {"type": "string", "description": "Tool name"},
                 "code": {"type": "string", "description": "Python source code"},
-                "category": {"type": "string", "description": "Tool category", "default": "general"},
+                "category": {
+                    "type": "string",
+                    "description": "Tool category",
+                    "default": "general",
+                },
                 "test_code": {"type": "string", "description": "Optional test code"},
             },
             "required": ["name", "code"],
@@ -627,7 +631,8 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
     async def ganglion_reconnect_mcp(name: str) -> str:
         """Reconnect to a failed MCP server."""
         if name not in state._mcp_bridges:
-            return _json_result({"success": False, "errors": [f"MCP server '{name}' not connected"]})
+            msg = f"MCP server '{name}' not connected"
+            return _json_result({"success": False, "errors": [msg]})
         bridge = state._mcp_bridges[name]
         config = bridge.config
         disconnect_result = await state.disconnect_mcp_server(name)

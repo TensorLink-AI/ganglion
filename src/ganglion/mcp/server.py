@@ -83,7 +83,8 @@ class MCPServerBridge:
 
             # Enforce category filter on call_tool too
             if self._categories and tool_def.category not in self._categories:
-                return [TextContent(type="text", text=f"Error: Tool '{name}' not available for this role")]
+                msg = f"Error: Tool '{name}' not available for this role"
+                return [TextContent(type="text", text=msg)]
 
             bot_id = self._resolve_bot_id()
             start = time.monotonic()

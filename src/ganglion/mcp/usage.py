@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
-import time
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +75,7 @@ class UsageTracker:
                     bot_id,
                     tool_name,
                     1 if success else 0,
-                    datetime.now(timezone.utc).isoformat(),
+                    datetime.now(UTC).isoformat(),
                     duration_ms,
                 ),
             )
