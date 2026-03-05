@@ -11,10 +11,12 @@ entry-point group (see pyproject.toml for the built-in examples).
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import logging
 from dataclasses import dataclass
-from typing import Any
+from types import ModuleType
+from typing import Any, cast
 
 from ganglion.compute.protocol import ComputeBackend
 
@@ -123,16 +125,14 @@ class BackendRegistry:
         if entry.config_class_name and "config" not in kwargs:
             config_cls = getattr(mod, entry.config_class_name)
             # Split kwargs into config fields and backend-level fields
-            import dataclasses
-
             config_fields = {f.name for f in dataclasses.fields(config_cls)}
             config_kwargs = {k: v for k, v in kwargs.items() if k in config_fields}
             rest_kwargs = {k: v for k, v in kwargs.items() if k not in config_fields}
             if config_kwargs:
                 rest_kwargs["config"] = config_cls(**config_kwargs)
-            return cls(**rest_kwargs)
+            return cast(ComputeBackend, cls(**rest_kwargs))
 
-        return cls(**kwargs)
+        return cast(ComputeBackend, cls(**kwargs))
 
     def register(self, name: str, cls: type[ComputeBackend]) -> None:
         """Register a backend class at runtime (e.g. from a plugin or test)."""
@@ -149,13 +149,7 @@ class BackendRegistry:
         try:
             from importlib.metadata import entry_points
 
-            eps = entry_points()
-            # Python 3.12+ returns a SelectableGroups; 3.11 returns a dict
-            group = (
-                eps.select(group="ganglion.compute.backends")
-                if hasattr(eps, "select")
-                else eps.get("ganglion.compute.backends", [])
-            )
+            group = entry_points(group="ganglion.compute.backends")
             for ep in group:
                 # Don't overwrite builtins — they carry extra metadata
                 if ep.name not in self._entries:
@@ -168,7 +162,7 @@ class BackendRegistry:
             logger.debug("Entry-point discovery failed", exc_info=True)
 
     @staticmethod
-    def _import_module(module_path: str, backend_name: str) -> Any:
+    def _import_module(module_path: str, backend_name: str) -> ModuleType:
         """Import a module, raising a clear error on missing dependencies."""
         try:
             return importlib.import_module(module_path)
