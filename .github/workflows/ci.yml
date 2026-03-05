@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install ruff mypy
+          pip install ruff==0.15.1 mypy
 
       - name: Ruff lint
         run: ruff check src/ tests/
