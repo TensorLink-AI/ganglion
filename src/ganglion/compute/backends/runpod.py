@@ -87,7 +87,8 @@ class RunPodBackend:
                 json={"query": query},
             )
             resp.raise_for_status()
-            return await resp.json()
+            result: dict[str, Any] = await resp.json()
+            return result
 
     async def submit(self, spec: JobSpec) -> JobHandle:
         pod_config = {
@@ -121,7 +122,8 @@ class RunPodBackend:
         )
         data = await self._api_request(query)
         pod = data.get("data", {}).get("pod", {})
-        return pod.get("desiredStatus", "UNKNOWN")
+        status: str = pod.get("desiredStatus", "UNKNOWN")
+        return status
 
     async def poll(self, handle: JobHandle) -> JobHandle:
         pod_status = await self._get_pod_status(handle.metadata["pod_id"])

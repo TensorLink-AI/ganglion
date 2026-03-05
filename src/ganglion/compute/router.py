@@ -102,20 +102,18 @@ class ComputeRouter:
         """Create a new JobSpec with overrides applied."""
         if not overrides:
             return spec
-        spec_dict = {
-            "image": spec.image,
-            "command": spec.command,
-            "env": spec.env,
-            "gpu_type": spec.gpu_type,
-            "gpu_count": spec.gpu_count,
-            "cpu_cores": spec.cpu_cores,
-            "memory_gb": spec.memory_gb,
-            "timeout_seconds": spec.timeout_seconds,
-            "artifacts_dir": spec.artifacts_dir,
-            "upload_paths": spec.upload_paths,
-        }
-        spec_dict.update(overrides)
-        return JobSpec(**spec_dict)
+        return JobSpec(
+            image=overrides.get("image", spec.image),
+            command=overrides.get("command", spec.command),
+            env=overrides.get("env", spec.env),
+            gpu_type=overrides.get("gpu_type", spec.gpu_type),
+            gpu_count=overrides.get("gpu_count", spec.gpu_count),
+            cpu_cores=overrides.get("cpu_cores", spec.cpu_cores),
+            memory_gb=overrides.get("memory_gb", spec.memory_gb),
+            timeout_seconds=overrides.get("timeout_seconds", spec.timeout_seconds),
+            artifacts_dir=overrides.get("artifacts_dir", spec.artifacts_dir),
+            upload_paths=overrides.get("upload_paths", spec.upload_paths),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for observation endpoints."""

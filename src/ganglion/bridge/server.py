@@ -667,10 +667,11 @@ async def update_compute_routes(body: UpdateRoutesRequest) -> dict[str, Any]:
         backend = r.get("backend")
         if not pattern or not backend:
             _error_response("INVALID_ROUTE", "Each route needs 'pattern' and 'backend'")
+            continue
         routes.append(
             ComputeRoute(
-                pattern=pattern,
-                backend=backend,
+                pattern=str(pattern),
+                backend=str(backend),
                 overrides=r.get("overrides", {}),
             )
         )
