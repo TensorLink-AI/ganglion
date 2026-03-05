@@ -74,6 +74,19 @@ class FederatedKnowledgeBackend:
         merged.sort(key=lambda a: a.timestamp, reverse=True)
         return merged[: query.max_entries]
 
+    async def find_similar_pattern(
+        self, capability: str, description: str, record_type: str = "strategy"
+    ) -> int | None:
+        return await self.local.find_similar_pattern(capability, description, record_type)
+
+    async def find_similar_antipattern(
+        self, capability: str, error_summary: str, record_type: str = "strategy"
+    ) -> int | None:
+        return await self.local.find_similar_antipattern(capability, error_summary, record_type)
+
+    async def increment_confirmation(self, table: str, record_id: int) -> None:
+        await self.local.increment_confirmation(table, record_id)
+
     async def count(self) -> dict[str, int]:
         return await self.local.count()
 

@@ -42,20 +42,34 @@ class KnowledgeStore:
         metric_name: str | None = None,
         stage: str | None = None,
         run_id: str | None = None,
+        subnet_id: str | None = None,
+        record_type: str = "strategy",
     ) -> None:
-        """Record a strategy that worked."""
-        await self.backend.save_pattern(
-            Pattern(
-                capability=capability,
-                description=description,
-                config=config,
-                metric_value=metric_value,
-                metric_name=metric_name,
-                stage=stage,
-                run_id=run_id,
-                source_bot=self.bot_id,
+        """Record a strategy that worked.
+
+        If a matching pattern already exists (same capability, description,
+        and record_type), its confirmation_count is incremented instead of
+        creating a duplicate — this is the Hebbian amplification loop.
+        """
+        existing = await self.backend.find_similar_pattern(capability, description, record_type)
+        if existing is not None:
+            await self.backend.increment_confirmation("patterns", existing)
+        else:
+            await self.backend.save_pattern(
+                Pattern(
+                    capability=capability,
+                    description=description,
+                    config=config,
+                    metric_value=metric_value,
+                    metric_name=metric_name,
+                    stage=stage,
+                    run_id=run_id,
+                    source_bot=self.bot_id,
+                    subnet_id=subnet_id,
+                    record_type=record_type,
+                    confirmation_count=1,
+                )
             )
-        )
 
     async def record_failure(
         self,
@@ -65,19 +79,34 @@ class KnowledgeStore:
         failure_mode: str | None = None,
         stage: str | None = None,
         run_id: str | None = None,
+        subnet_id: str | None = None,
+        record_type: str = "strategy",
     ) -> None:
-        """Record a strategy that failed."""
-        await self.backend.save_antipattern(
-            Antipattern(
-                capability=capability,
-                error_summary=error_summary[:500],
-                config=config,
-                failure_mode=failure_mode,
-                stage=stage,
-                run_id=run_id,
-                source_bot=self.bot_id,
+        """Record a strategy that failed.
+
+        If a matching antipattern already exists (same capability,
+        error_summary, and record_type), its confirmation_count is
+        incremented instead of creating a duplicate.
+        """
+        truncated = error_summary[:500]
+        existing = await self.backend.find_similar_antipattern(capability, truncated, record_type)
+        if existing is not None:
+            await self.backend.increment_confirmation("antipatterns", existing)
+        else:
+            await self.backend.save_antipattern(
+                Antipattern(
+                    capability=capability,
+                    error_summary=truncated,
+                    config=config,
+                    failure_mode=failure_mode,
+                    stage=stage,
+                    run_id=run_id,
+                    source_bot=self.bot_id,
+                    subnet_id=subnet_id,
+                    record_type=record_type,
+                    confirmation_count=1,
+                )
             )
-        )
 
     async def record_agent_design(self, design: AgentDesignPattern) -> None:
         """Record what agent structure produced this outcome."""
@@ -87,6 +116,7 @@ class KnowledgeStore:
         self,
         capability: str,
         max_entries: int = 10,
+        subnet_id: str | None = None,
     ) -> str:
         """Format relevant knowledge for injection into an agent's prompt.
 
@@ -94,10 +124,10 @@ class KnowledgeStore:
         Agents receive only knowledge relevant to their capability.
         """
         patterns = await self.backend.query_patterns(
-            KnowledgeQuery(capability=capability, max_entries=max_entries)
+            KnowledgeQuery(capability=capability, max_entries=max_entries, subnet_id=subnet_id)
         )
         antipatterns = await self.backend.query_antipatterns(
-            KnowledgeQuery(capability=capability, max_entries=max_entries)
+            KnowledgeQuery(capability=capability, max_entries=max_entries, subnet_id=subnet_id)
         )
 
         if not patterns and not antipatterns:
