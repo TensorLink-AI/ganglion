@@ -20,7 +20,14 @@ from ganglion.compute.backends.runpod import RunPodBackend, RunPodConfig
 from ganglion.compute.backends.ssh import SSHBackend, SSHConfig
 from ganglion.compute.job_manager import JobManager
 from ganglion.compute.mcp_tools import _render_dockerfile, register_compute_tools
-from ganglion.compute.protocol import BuildResult, DockerPrefab, JobHandle, JobResult, JobSpec, JobStatus
+from ganglion.compute.protocol import (
+    BuildResult,
+    DockerPrefab,
+    JobHandle,
+    JobResult,
+    JobSpec,
+    JobStatus,
+)
 from ganglion.compute.router import ComputeRoute, ComputeRouter
 
 # ── Protocol / data class tests ────────────────────────────
