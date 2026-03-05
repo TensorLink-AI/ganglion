@@ -204,6 +204,11 @@ class RunExperimentRequest(BaseModel):
     config: dict[str, Any]
 
 
+class SetStageBackendRequest(BaseModel):
+    backend: str = Field(..., min_length=1, max_length=200)
+    model: str | None = Field(default=None, max_length=200)
+
+
 class ConnectMCPServerRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     transport: str = Field(default="stdio", pattern="^(stdio|sse)$")
@@ -491,6 +496,78 @@ async def rollback_to(index: int) -> dict[str, Any]:
     if not result.success:
         _error_response("ROLLBACK_ERROR", "; ".join(result.errors))
     return _success_response(None)
+
+
+# ── LLM Backend endpoints (v1) ─────────────────────────────
+
+
+@app.get("/v1/backends")
+async def get_backends() -> dict[str, Any]:
+    """List available LLM backends (names and models only — no secrets)."""
+    state = _get_state()
+    if state.llm_factory is None:
+        return _success_response([])
+    return _success_response(state.llm_factory.list_backends())
+
+
+@app.put("/v1/stages/{stage_name}/backend")
+async def set_stage_backend(stage_name: str, body: SetStageBackendRequest) -> dict[str, Any]:
+    """Assign an LLM backend to a pipeline stage at runtime."""
+    state = _get_state()
+
+    # Validate backend exists
+    if state.llm_factory and not state.llm_factory.has_backend(body.backend):
+        _error_response(
+            "UNKNOWN_BACKEND",
+            f"Backend '{body.backend}' not found. "
+            f"Available: {[b['name'] for b in state.llm_factory.list_backends()]}",
+        )
+
+    # Find and update the stage
+    stage = state.pipeline_def.get_stage(stage_name)
+    if stage is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": f"Stage '{stage_name}' not found",
+                }
+            },
+        )
+
+    previous_backend = stage.llm_backend
+    stage.llm_backend = body.backend
+
+    # Record as mutation for rollback
+    from ganglion.state.mutation import Mutation
+
+    state.mutations.append(
+        Mutation(
+            mutation_type="set_stage_backend",
+            target=stage_name,
+            description=(
+                f"Changed backend for stage '{stage_name}' "
+                f"from '{previous_backend}' to '{body.backend}'"
+            ),
+            rollback_data={
+                "stage": stage_name,
+                "previous_backend": previous_backend,
+            },
+        )
+    )
+
+    return _success_response({
+        "stage": stage_name,
+        "backend": body.backend,
+        "model": body.model,
+    })
+
+
+@app.get("/backends")
+async def get_backends_compat() -> dict[str, Any]:
+    """List backends (deprecated: use /v1/backends)."""
+    return await get_backends()  # type: ignore[no-any-return]
 
 
 # ── MCP endpoints (v1) ────────────────────────────────────

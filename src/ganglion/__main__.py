@@ -248,11 +248,13 @@ def _run_serve(args: argparse.Namespace) -> None:
 
     from ganglion.bridge.server import app, configure, setup_cors
     from ganglion.config import GanglionConfig
+    from ganglion.runtime.llm_client import LLMClientFactory
 
     config = GanglionConfig.from_env()
     config.validate_or_raise()
 
     state = _load_state(args.project_dir, bot_id=args.bot_id)
+    state.llm_factory = LLMClientFactory(config.llm_backends)
 
     # Connect to configured MCP servers before starting the HTTP bridge
     _async_run(state.initialize_mcp())
@@ -323,7 +325,12 @@ def _run_pipeline(args: argparse.Namespace) -> None:
 
 
 def _run_run(args: argparse.Namespace) -> None:
+    from ganglion.config import GanglionConfig
+    from ganglion.runtime.llm_client import LLMClientFactory
+
+    config = GanglionConfig.from_env()
     state = _load_state(args.project_dir, bot_id=getattr(args, "bot_id", None))
+    state.llm_factory = LLMClientFactory(config.llm_backends)
 
     overrides = None
     if args.overrides:

@@ -19,6 +19,7 @@ class StageDef:
     depends_on: list[str] = field(default_factory=list)
     input_keys: list[str] = field(default_factory=list)
     output_keys: list[str] = field(default_factory=list)
+    llm_backend: str = "default"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -29,6 +30,7 @@ class StageDef:
             "depends_on": self.depends_on,
             "input_keys": self.input_keys,
             "output_keys": self.output_keys,
+            "llm_backend": self.llm_backend,
         }
 
 
@@ -98,6 +100,7 @@ class PipelineDef:
                     depends_on=list(stage.depends_on),
                     input_keys=list(stage.input_keys),
                     output_keys=list(stage.output_keys),
+                    llm_backend=stage.llm_backend,
                 )
                 for stage in self.stages
             ],

@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ganglion.runtime.llm_client import LLMClient
+from ganglion.config import LLMBackendConfig
+from ganglion.runtime.llm_client import LLMClient, LLMClientFactory
 
 
 class TestLLMClient:
@@ -220,3 +221,68 @@ class TestLLMClient:
         result = client._parse_response(mock_response)
         assert result["usage"]["prompt_tokens"] == 0
         assert result["usage"]["completion_tokens"] == 0
+
+
+class TestLLMClientFactory:
+    def _make_backends(self):
+        return {
+            "default": LLMBackendConfig(
+                name="default", api_key="sk-default", model="gpt-4o"
+            ),
+            "fast": LLMBackendConfig(
+                name="fast", api_key="sk-fast", model="gpt-4o-mini"
+            ),
+            "reasoning": LLMBackendConfig(
+                name="reasoning",
+                api_key="sk-reason",
+                base_url="https://reason.api.com/v1",
+                model="o1",
+            ),
+        }
+
+    def test_get_default_backend(self):
+        factory = LLMClientFactory(self._make_backends())
+        client = factory.get()
+        assert client.model == "gpt-4o"
+
+    def test_get_named_backend(self):
+        factory = LLMClientFactory(self._make_backends())
+        client = factory.get("fast")
+        assert client.model == "gpt-4o-mini"
+
+    def test_get_with_model_override(self):
+        factory = LLMClientFactory(self._make_backends())
+        client = factory.get("fast", model_override="gpt-4o-mini-2025")
+        assert client.model == "gpt-4o-mini-2025"
+
+    def test_get_unknown_backend_raises(self):
+        factory = LLMClientFactory(self._make_backends())
+        with pytest.raises(ValueError, match="Unknown LLM backend 'nonexistent'"):
+            factory.get("nonexistent")
+
+    def test_caches_clients(self):
+        factory = LLMClientFactory(self._make_backends())
+        client1 = factory.get("fast")
+        client2 = factory.get("fast")
+        assert client1 is client2
+
+    def test_different_overrides_get_different_clients(self):
+        factory = LLMClientFactory(self._make_backends())
+        client1 = factory.get("fast")
+        client2 = factory.get("fast", model_override="other-model")
+        assert client1 is not client2
+
+    def test_list_backends_no_secrets(self):
+        factory = LLMClientFactory(self._make_backends())
+        backends = factory.list_backends()
+        assert len(backends) == 3
+        names = {b["name"] for b in backends}
+        assert names == {"default", "fast", "reasoning"}
+        # Ensure no api_key is exposed
+        for b in backends:
+            assert "api_key" not in b
+
+    def test_has_backend(self):
+        factory = LLMClientFactory(self._make_backends())
+        assert factory.has_backend("fast") is True
+        assert factory.has_backend("nonexistent") is False

@@ -108,12 +108,14 @@ class PipelineOrchestrator:
         persistence: PersistenceBackend | None = None,
         knowledge: Any | None = None,
         event_handler: Callable[[PipelineEvent], None] | None = None,
+        llm_factory: Any | None = None,
     ):
         self.pipeline = pipeline
         self.agents = agents
         self.persistence = persistence
         self.knowledge = knowledge
         self.emit = event_handler or (lambda e: None)
+        self.llm_factory = llm_factory
 
     async def run(self, task: TaskContext) -> PipelineResult:
         """Execute all stages in dependency order."""
@@ -241,6 +243,14 @@ class PipelineOrchestrator:
                         agent_kwargs["extra_system_context"] = f"{existing}\n\n{combined}"
                     else:
                         agent_kwargs["extra_system_context"] = combined
+
+            # Inject llm_client from the factory based on the stage's backend
+            if self.llm_factory and "llm_client" not in agent_kwargs:
+                backend = stage_def.llm_backend
+                model_override = agent_kwargs.pop("model", None)
+                agent_kwargs["llm_client"] = self.llm_factory.get(
+                    backend, model_override=model_override
+                )
 
             try:
                 agent = agent_cls(**agent_kwargs)

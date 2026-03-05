@@ -6,8 +6,27 @@ Validates all required variables at import time and fails fast with a clear mess
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 from dataclasses import dataclass, field
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class LLMBackendConfig:
+    """Configuration for a single named LLM backend."""
+
+    name: str
+    api_key: str = ""
+    base_url: str = ""
+    model: str = "gpt-4o"
+    max_retries: int = 5
+    base_delay: float = 1.0
+    max_delay: float = 60.0
+    request_timeout: float = 120.0
 
 
 @dataclass(frozen=True)
@@ -43,6 +62,9 @@ class GanglionConfig:
 
     # Request limits
     max_request_body_bytes: int = 10 * 1024 * 1024  # 10MB
+
+    # LLM backends (named provider configurations)
+    llm_backends: dict[str, LLMBackendConfig] = field(default_factory=dict)
 
     # MCP server (outbound — expose Ganglion tools via MCP)
     mcp_server_enabled: bool = False
@@ -86,14 +108,60 @@ class GanglionConfig:
         if "chutes" in llm_provider_base_url.lower() and not llm_provider_api_key:
             llm_provider_api_key = "OPEN-API-KEY"
 
+        llm_model = _get("LLM_MODEL", "gpt-4o")
+        llm_max_retries = _get_int("LLM_MAX_RETRIES", 5)
+        llm_base_delay = _get_float("LLM_BASE_DELAY", 1.0)
+        llm_max_delay = _get_float("LLM_MAX_DELAY", 60.0)
+        llm_request_timeout = _get_float("LLM_REQUEST_TIMEOUT", 120.0)
+
+        # Build named LLM backends
+        backends: dict[str, LLMBackendConfig] = {}
+
+        # Always create "default" from the legacy single-provider env vars
+        backends["default"] = LLMBackendConfig(
+            name="default",
+            api_key=llm_provider_api_key,
+            base_url=llm_provider_base_url,
+            model=llm_model,
+            max_retries=llm_max_retries,
+            base_delay=llm_base_delay,
+            max_delay=llm_max_delay,
+            request_timeout=llm_request_timeout,
+        )
+
+        # Parse additional named backends from GANGLION_LLM_BACKENDS JSON
+        raw_backends = _get("LLM_BACKENDS", "")
+        if raw_backends:
+            try:
+                parsed: dict[str, Any] = json.loads(raw_backends)
+                for bname, bconf in parsed.items():
+                    if not isinstance(bconf, dict):
+                        logger.warning("Skipping invalid backend config for '%s'", bname)
+                        continue
+                    backends[bname] = LLMBackendConfig(
+                        name=bname,
+                        api_key=bconf.get("api_key", ""),
+                        base_url=bconf.get("base_url", ""),
+                        model=bconf.get("model", llm_model),
+                        max_retries=int(bconf.get("max_retries", llm_max_retries)),
+                        base_delay=float(bconf.get("base_delay", llm_base_delay)),
+                        max_delay=float(bconf.get("max_delay", llm_max_delay)),
+                        request_timeout=float(
+                            bconf.get("request_timeout", llm_request_timeout)
+                        ),
+                    )
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.error("Failed to parse GANGLION_LLM_BACKENDS: %s", e)
+
         return cls(
             llm_provider_api_key=llm_provider_api_key,
             llm_provider_base_url=llm_provider_base_url,
-            llm_model=_get("LLM_MODEL", "gpt-4o"),
-            llm_max_retries=_get_int("LLM_MAX_RETRIES", 5),
-            llm_base_delay=_get_float("LLM_BASE_DELAY", 1.0),
-            llm_max_delay=_get_float("LLM_MAX_DELAY", 60.0),
-            llm_request_timeout=_get_float("LLM_REQUEST_TIMEOUT", 120.0),
+            llm_model=llm_model,
+            llm_max_retries=llm_max_retries,
+            llm_base_delay=llm_base_delay,
+            llm_max_delay=llm_max_delay,
+            llm_request_timeout=llm_request_timeout,
+            llm_backends=backends,
             server_host=_get("HOST", "127.0.0.1"),
             server_port=_get_int("PORT", 8899),
             cors_allowed_origins=_get_list("CORS_ORIGINS", "http://localhost:3000"),

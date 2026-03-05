@@ -3,6 +3,7 @@
 import pytest
 
 from ganglion.composition.base_agent import BaseAgentWrapper
+from ganglion.config import LLMBackendConfig
 from ganglion.orchestration.events import PipelineEvent
 from ganglion.orchestration.orchestrator import PipelineOrchestrator
 from ganglion.orchestration.pipeline import PipelineDef, StageDef
@@ -14,6 +15,7 @@ from ganglion.orchestration.task_context import (
     TaskDef,
 )
 from ganglion.policies.retry import FixedRetry
+from ganglion.runtime.llm_client import LLMClientFactory
 from ganglion.runtime.types import AgentResult
 
 
@@ -230,3 +232,78 @@ class TestPipelineOrchestrator:
 
         with pytest.raises(PipelineValidationError):
             await orchestrator.run(TaskContext(make_config()))
+
+    async def test_llm_factory_injects_client(self):
+        """Orchestrator should inject llm_client from factory based on stage backend."""
+        captured_clients: list = []
+
+        class CapturingAgent(BaseAgentWrapper):
+            def build_system_prompt(self, task):
+                return "test"
+
+            def build_tools(self, task):
+                return [], {}
+
+            async def run(self, task):
+                captured_clients.append(self.llm_client)
+                return AgentResult(success=True, raw_text="ok")
+
+        backends = {
+            "default": LLMBackendConfig(
+                name="default", api_key="sk-default", model="gpt-4o"
+            ),
+            "fast": LLMBackendConfig(
+                name="fast", api_key="sk-fast", model="gpt-4o-mini"
+            ),
+        }
+        factory = LLMClientFactory(backends)
+
+        pipeline = PipelineDef(
+            name="test",
+            stages=[StageDef(name="step1", agent="CapturingAgent", llm_backend="fast")],
+        )
+        orchestrator = PipelineOrchestrator(
+            pipeline=pipeline,
+            agents={"CapturingAgent": CapturingAgent},
+            llm_factory=factory,
+        )
+        result = await orchestrator.run(TaskContext(make_config()))
+        assert result.success is True
+        assert len(captured_clients) == 1
+        assert captured_clients[0] is not None
+        assert captured_clients[0].model == "gpt-4o-mini"
+
+    async def test_llm_factory_default_backend(self):
+        """Stage with no explicit backend should use 'default'."""
+        captured_clients: list = []
+
+        class CapturingAgent(BaseAgentWrapper):
+            def build_system_prompt(self, task):
+                return "test"
+
+            def build_tools(self, task):
+                return [], {}
+
+            async def run(self, task):
+                captured_clients.append(self.llm_client)
+                return AgentResult(success=True, raw_text="ok")
+
+        backends = {
+            "default": LLMBackendConfig(
+                name="default", api_key="sk-default", model="gpt-4o"
+            ),
+        }
+        factory = LLMClientFactory(backends)
+
+        pipeline = PipelineDef(
+            name="test",
+            stages=[StageDef(name="step1", agent="CapturingAgent")],
+        )
+        orchestrator = PipelineOrchestrator(
+            pipeline=pipeline,
+            agents={"CapturingAgent": CapturingAgent},
+            llm_factory=factory,
+        )
+        result = await orchestrator.run(TaskContext(make_config()))
+        assert result.success is True
+        assert captured_clients[0].model == "gpt-4o"

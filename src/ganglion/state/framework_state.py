@@ -48,6 +48,7 @@ class FrameworkState:
         knowledge: KnowledgeStore | None = None,
         validator: MutationValidator | None = None,
         mcp_configs: list[Any] | None = None,
+        llm_factory: Any | None = None,
     ):
         self.subnet_config = subnet_config
         self.pipeline_def = pipeline_def
@@ -57,6 +58,7 @@ class FrameworkState:
         self.project_root = project_root or Path(".")
         self.knowledge = knowledge
         self.validator = validator or MutationValidator()
+        self.llm_factory = llm_factory
 
         # MCP client bridges (name -> bridge)
         self._mcp_configs: list[Any] = mcp_configs or []
@@ -196,6 +198,7 @@ class FrameworkState:
             "tools": self.tool_registry.list_all(),
             "agents": self.agent_registry.list_all(),
             "knowledge": (await self.knowledge.summary()) if self.knowledge else None,
+            "backends": self.llm_factory.list_backends() if self.llm_factory else [],
             "mcp": self._describe_mcp(),
             "mutations": len(self.mutations),
             "running": self._is_running,
@@ -565,6 +568,7 @@ class FrameworkState:
                     agents=self.agent_registry.as_dict(),
                     persistence=self.persistence,
                     knowledge=self.knowledge,
+                    llm_factory=self.llm_factory,
                 )
                 result = await orchestrator.run(task)
                 if self.persistence:
@@ -597,6 +601,7 @@ class FrameworkState:
                     agents=self.agent_registry.as_dict(),
                     persistence=self.persistence,
                     knowledge=self.knowledge,
+                    llm_factory=self.llm_factory,
                 )
                 return await orchestrator._execute_stage(stage_def, task)
             finally:
@@ -697,6 +702,14 @@ class FrameworkState:
                     if name in self._mcp_bridges:
                         await self._disconnect_mcp_bridge(name)
                 # disconnect_mcp rollback is a no-op — we can't reconnect without config
+
+            elif mutation.mutation_type == "set_stage_backend":
+                stage_name = mutation.rollback_data.get("stage")
+                previous_backend = mutation.rollback_data.get("previous_backend", "default")
+                if stage_name:
+                    stage = self.pipeline_def.get_stage(stage_name)
+                    if stage:
+                        stage.llm_backend = previous_backend
 
             elif mutation.mutation_type == "swap_policy":
                 stage_name = mutation.rollback_data.get("stage")

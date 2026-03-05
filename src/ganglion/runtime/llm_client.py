@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ganglion.config import LLMBackendConfig
 
 logger = logging.getLogger(__name__)
 
@@ -134,3 +137,48 @@ class LLMClient:
         }
 
         return result
+
+
+class LLMClientFactory:
+    """Creates and caches LLMClient instances from named backend configs.
+
+    Claw bot selects backends by name; API keys never leave this factory.
+    """
+
+    def __init__(self, backends: dict[str, LLMBackendConfig]) -> None:
+        self._backends = dict(backends)
+        self._clients: dict[str, LLMClient] = {}
+
+    def get(
+        self, backend_name: str = "default", model_override: str | None = None
+    ) -> LLMClient:
+        """Get or create an LLMClient for the named backend."""
+        cache_key = f"{backend_name}:{model_override or ''}"
+        if cache_key not in self._clients:
+            cfg = self._backends.get(backend_name)
+            if cfg is None:
+                raise ValueError(
+                    f"Unknown LLM backend '{backend_name}'. "
+                    f"Available: {sorted(self._backends)}"
+                )
+            self._clients[cache_key] = LLMClient(
+                api_key=cfg.api_key,
+                base_url=cfg.base_url or None,
+                model=model_override or cfg.model,
+                max_retries=cfg.max_retries,
+                base_delay=cfg.base_delay,
+                max_delay=cfg.max_delay,
+                request_timeout=cfg.request_timeout,
+            )
+        return self._clients[cache_key]
+
+    def list_backends(self) -> list[dict[str, str]]:
+        """Return backend names and models — no secrets exposed."""
+        return [
+            {"name": cfg.name, "model": cfg.model, "base_url": cfg.base_url}
+            for cfg in self._backends.values()
+        ]
+
+    def has_backend(self, name: str) -> bool:
+        """Check if a backend name is registered."""
+        return name in self._backends
