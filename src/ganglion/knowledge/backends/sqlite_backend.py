@@ -75,8 +75,7 @@ class SqliteKnowledgeBackend:
             # Migration: add new columns to existing tables
             for table in ("patterns", "antipatterns"):
                 existing = {
-                    row[1]
-                    for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+                    row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
                 }
                 if "subnet_id" not in existing:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN subnet_id TEXT")

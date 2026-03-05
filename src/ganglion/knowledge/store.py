@@ -51,9 +51,7 @@ class KnowledgeStore:
         and record_type), its confirmation_count is incremented instead of
         creating a duplicate — this is the Hebbian amplification loop.
         """
-        existing = await self.backend.find_similar_pattern(
-            capability, description, record_type
-        )
+        existing = await self.backend.find_similar_pattern(capability, description, record_type)
         if existing is not None:
             await self.backend.increment_confirmation("patterns", existing)
         else:
@@ -91,9 +89,7 @@ class KnowledgeStore:
         incremented instead of creating a duplicate.
         """
         truncated = error_summary[:500]
-        existing = await self.backend.find_similar_antipattern(
-            capability, truncated, record_type
-        )
+        existing = await self.backend.find_similar_antipattern(capability, truncated, record_type)
         if existing is not None:
             await self.backend.increment_confirmation("antipatterns", existing)
         else:
