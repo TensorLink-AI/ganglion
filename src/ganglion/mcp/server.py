@@ -153,9 +153,7 @@ class MCPServerBridge:
 
         async def handle_usage(request: Any) -> Response:
             if not self._usage_tracker:
-                return JSONResponse(
-                    {"error": "Usage tracking not enabled"}, status_code=404
-                )
+                return JSONResponse({"error": "Usage tracking not enabled"}, status_code=404)
             bot_id = request.query_params.get("bot_id")
             if bot_id:
                 data = self._usage_tracker.get_bot_stats(bot_id)

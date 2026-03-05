@@ -746,10 +746,14 @@ class TestMCPRolesConfig:
         from ganglion.mcp.roles import MCPRolesConfig
 
         roles_file = tmp_path / "roles.json"
-        roles_file.write_text(json.dumps([
-            {"name": "admin", "categories": None, "token": "abc", "port": 8901},
-            {"name": "worker", "categories": ["observation"], "token": "def", "port": 8902},
-        ]))
+        roles_file.write_text(
+            json.dumps(
+                [
+                    {"name": "admin", "categories": None, "token": "abc", "port": 8901},
+                    {"name": "worker", "categories": ["observation"], "token": "def", "port": 8902},
+                ]
+            )
+        )
         config = MCPRolesConfig.from_file(roles_file)
         assert len(config.roles) == 2
         assert config.validate() == []
@@ -757,39 +761,47 @@ class TestMCPRolesConfig:
     def test_duplicate_port_rejected(self):
         from ganglion.mcp.roles import MCPRole, MCPRolesConfig
 
-        config = MCPRolesConfig(roles=[
-            MCPRole(name="a", token="t1", port=8901),
-            MCPRole(name="b", token="t2", port=8901),
-        ])
+        config = MCPRolesConfig(
+            roles=[
+                MCPRole(name="a", token="t1", port=8901),
+                MCPRole(name="b", token="t2", port=8901),
+            ]
+        )
         errors = config.validate()
         assert any("Duplicate SSE port" in e for e in errors)
 
     def test_duplicate_name_rejected(self):
         from ganglion.mcp.roles import MCPRole, MCPRolesConfig
 
-        config = MCPRolesConfig(roles=[
-            MCPRole(name="admin", token="t1", port=8901),
-            MCPRole(name="admin", token="t2", port=8902),
-        ])
+        config = MCPRolesConfig(
+            roles=[
+                MCPRole(name="admin", token="t1", port=8901),
+                MCPRole(name="admin", token="t2", port=8902),
+            ]
+        )
         errors = config.validate()
         assert any("Duplicate role name" in e for e in errors)
 
     def test_empty_token_rejected(self):
         from ganglion.mcp.roles import MCPRole, MCPRolesConfig
 
-        config = MCPRolesConfig(roles=[
-            MCPRole(name="worker", token="", port=8901),
-        ])
+        config = MCPRolesConfig(
+            roles=[
+                MCPRole(name="worker", token="", port=8901),
+            ]
+        )
         errors = config.validate()
         assert any("empty token" in e for e in errors)
 
     def test_multiple_stdio_rejected(self):
         from ganglion.mcp.roles import MCPRole, MCPRolesConfig
 
-        config = MCPRolesConfig(roles=[
-            MCPRole(name="a", token="t1", port=8901, transport="stdio"),
-            MCPRole(name="b", token="t2", port=8902, transport="stdio"),
-        ])
+        config = MCPRolesConfig(
+            roles=[
+                MCPRole(name="a", token="t1", port=8901, transport="stdio"),
+                MCPRole(name="b", token="t2", port=8902, transport="stdio"),
+            ]
+        )
         errors = config.validate()
         assert any("stdio" in e for e in errors)
 
@@ -809,9 +821,11 @@ class TestMCPRolesConfig:
     def test_invalid_transport_rejected(self):
         from ganglion.mcp.roles import MCPRole, MCPRolesConfig
 
-        config = MCPRolesConfig(roles=[
-            MCPRole(name="a", token="t1", port=8901, transport="websocket"),
-        ])
+        config = MCPRolesConfig(
+            roles=[
+                MCPRole(name="a", token="t1", port=8901, transport="websocket"),
+            ]
+        )
         errors = config.validate()
         assert any("invalid transport" in e for e in errors)
 
@@ -864,9 +878,7 @@ class TestMCPServerBridgeRoles:
         from ganglion.mcp.server import MCPServerBridge
 
         registry = _make_categorized_registry()
-        bridge = MCPServerBridge(
-            registry, categories=["observation", "execution"], role="worker"
-        )
+        bridge = MCPServerBridge(registry, categories=["observation", "execution"], role="worker")
 
         tools = []
         for tool_dict in registry.list_all():
@@ -882,9 +894,7 @@ class TestMCPServerBridgeRoles:
         from ganglion.mcp.server import MCPServerBridge
 
         registry = _make_categorized_registry()
-        bridge = MCPServerBridge(
-            registry, categories=["observation"], role="observer"
-        )
+        bridge = MCPServerBridge(registry, categories=["observation"], role="observer")
 
         tools = []
         for tool_dict in registry.list_all():
