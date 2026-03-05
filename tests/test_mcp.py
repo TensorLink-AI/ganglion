@@ -905,11 +905,12 @@ class TestMCPFrameworkTools:
         assert (tmp_path / "components" / "my_comp.py").read_text() == "x = 1"
 
     @pytest.mark.asyncio
-    async def test_write_tool_calls_state(self):
+    async def test_write_tool_calls_state(self, tmp_path):
         from ganglion.mcp.tools import register_framework_tools
         from ganglion.state.tool_registry import ToolRegistry
 
         state = _make_mock_framework_state()
+        state.project_root = tmp_path
         registry = ToolRegistry()
         register_framework_tools(registry, state)
 
@@ -920,11 +921,12 @@ class TestMCPFrameworkTools:
         assert "success" in data
 
     @pytest.mark.asyncio
-    async def test_write_agent_calls_state(self):
+    async def test_write_agent_calls_state(self, tmp_path):
         from ganglion.mcp.tools import register_framework_tools
         from ganglion.state.tool_registry import ToolRegistry
 
         state = _make_mock_framework_state()
+        state.project_root = tmp_path
         registry = ToolRegistry()
         register_framework_tools(registry, state)
 
@@ -934,11 +936,12 @@ class TestMCPFrameworkTools:
         assert "success" in data
 
     @pytest.mark.asyncio
-    async def test_write_prompt_calls_state(self):
+    async def test_write_prompt_calls_state(self, tmp_path):
         from ganglion.mcp.tools import register_framework_tools
         from ganglion.state.tool_registry import ToolRegistry
 
         state = _make_mock_framework_state()
+        state.project_root = tmp_path
         registry = ToolRegistry()
         register_framework_tools(registry, state)
 
