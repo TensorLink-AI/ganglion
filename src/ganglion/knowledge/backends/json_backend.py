@@ -109,6 +109,10 @@ class JsonKnowledgeBackend:
             ]
         if query.exclude_source is not None:
             patterns = [p for p in patterns if p.source_bot != query.exclude_source]
+        if query.subnet_id is not None:
+            patterns = [p for p in patterns if p.subnet_id == query.subnet_id]
+        if query.record_type is not None:
+            patterns = [p for p in patterns if p.record_type == query.record_type]
 
         # Most recent first, limited to max_entries
         patterns.sort(key=lambda p: p.timestamp, reverse=True)
@@ -124,9 +128,51 @@ class JsonKnowledgeBackend:
             antipatterns = [a for a in antipatterns if a.timestamp >= query.since]
         if query.exclude_source is not None:
             antipatterns = [a for a in antipatterns if a.source_bot != query.exclude_source]
+        if query.subnet_id is not None:
+            antipatterns = [a for a in antipatterns if a.subnet_id == query.subnet_id]
+        if query.record_type is not None:
+            antipatterns = [a for a in antipatterns if a.record_type == query.record_type]
 
         antipatterns.sort(key=lambda a: a.timestamp, reverse=True)
         return antipatterns[: query.max_entries]
+
+    async def find_similar_pattern(
+        self, capability: str, description: str, record_type: str = "strategy"
+    ) -> int | None:
+        data = self._load_patterns()
+        for i, d in enumerate(data):
+            if (
+                d.get("capability") == capability
+                and d.get("description") == description
+                and d.get("record_type", "strategy") == record_type
+            ):
+                return i
+        return None
+
+    async def find_similar_antipattern(
+        self, capability: str, error_summary: str, record_type: str = "strategy"
+    ) -> int | None:
+        data = self._load_antipatterns()
+        for i, d in enumerate(data):
+            if (
+                d.get("capability") == capability
+                and d.get("error_summary") == error_summary
+                and d.get("record_type", "strategy") == record_type
+            ):
+                return i
+        return None
+
+    async def increment_confirmation(self, table: str, record_id: int) -> None:
+        if table == "patterns":
+            data = self._load_patterns()
+            data[record_id]["confirmation_count"] = data[record_id].get("confirmation_count", 1) + 1
+            self._save_patterns(data)
+        elif table == "antipatterns":
+            data = self._load_antipatterns()
+            data[record_id]["confirmation_count"] = data[record_id].get("confirmation_count", 1) + 1
+            self._save_antipatterns(data)
+        else:
+            raise ValueError(f"Invalid table: {table}")
 
     async def count(self) -> dict[str, int]:
         return {
