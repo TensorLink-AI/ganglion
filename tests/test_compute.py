@@ -10,12 +10,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from ganglion.compute.artifacts import LocalArtifactStore
+from ganglion.compute.backends.docker_build import (
+    DockerBuildBackend,
+    DockerBuildConfig,
+    _match_glob,
+)
 from ganglion.compute.backends.local import LocalBackend
 from ganglion.compute.backends.runpod import RunPodBackend, RunPodConfig
 from ganglion.compute.backends.ssh import SSHBackend, SSHConfig
 from ganglion.compute.job_manager import JobManager
-from ganglion.compute.mcp_tools import register_compute_tools
-from ganglion.compute.protocol import JobHandle, JobResult, JobSpec, JobStatus
+from ganglion.compute.mcp_tools import _render_dockerfile, register_compute_tools
+from ganglion.compute.protocol import BuildResult, JobHandle, JobResult, JobSpec, JobStatus
 from ganglion.compute.router import ComputeRoute, ComputeRouter
 
 # ── Protocol / data class tests ────────────────────────────
@@ -1186,3 +1191,457 @@ class TestLocalArtifactStoreEdgeCases:
     async def test_default_root(self):
         store = LocalArtifactStore()
         assert store._root == Path("./artifacts")
+
+
+# ── BuildResult tests ────────────────────────────────────────
+
+
+class TestBuildResult:
+    def test_defaults(self):
+        r = BuildResult(image_ref="ghcr.io/test:v1", success=True)
+        assert r.error == ""
+        assert r.duration_seconds == 0.0
+
+    def test_failed(self):
+        r = BuildResult(image_ref="", success=False, error="build failed")
+        assert not r.success
+        assert r.error == "build failed"
+
+
+# ── DockerBuildBackend tests ─────────────────────────────────
+
+
+class TestMatchGlob:
+    def test_exact(self):
+        assert _match_glob("python:3.11", "python:3.11")
+        assert not _match_glob("python:3.11", "python:3.12")
+
+    def test_wildcard_tag(self):
+        assert _match_glob("python:*", "python:3.11")
+        assert _match_glob("python:*", "python:3.11-slim")
+        assert _match_glob("nvidia/pytorch:*", "nvidia/pytorch:24.01")
+        assert not _match_glob("nvidia/pytorch:*", "nvidia/cuda:12.0")
+
+    def test_bare_name_matches_wildcard(self):
+        assert _match_glob("python:*", "python")
+
+    def test_prefix_glob(self):
+        assert _match_glob("nvidia/*", "nvidia/pytorch:24.01")
+
+
+class TestDockerBuildConfig:
+    def test_defaults(self):
+        cfg = DockerBuildConfig()
+        assert cfg.registry == "ghcr.io"
+        assert cfg.registry_user == ""
+        assert cfg.registry_token == ""
+        assert cfg.max_dockerfile_lines == 200
+        assert cfg.build_timeout_seconds == 600
+        assert len(cfg.allowed_base_images) > 0
+
+
+class TestDockerBuildBackend:
+    def test_name(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        assert backend.name == "docker-build"
+        backend2 = DockerBuildBackend(cfg, name="custom-builder")
+        assert backend2.name == "custom-builder"
+
+    @pytest.mark.asyncio
+    async def test_validate_empty(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        errors = await backend.validate("")
+        assert any("empty" in e.lower() for e in errors)
+
+    @pytest.mark.asyncio
+    async def test_validate_no_from(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        errors = await backend.validate("RUN echo hello")
+        assert any("FROM" in e for e in errors)
+
+    @pytest.mark.asyncio
+    async def test_validate_allowed_base_image(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        errors = await backend.validate("FROM python:3.11\nRUN pip install torch")
+        assert errors == []
+
+    @pytest.mark.asyncio
+    async def test_validate_disallowed_base_image(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        errors = await backend.validate("FROM malicious/image:latest\nRUN echo hi")
+        assert any("not in allowed list" in e for e in errors)
+
+    @pytest.mark.asyncio
+    async def test_validate_scratch_always_allowed(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        errors = await backend.validate("FROM scratch\nCOPY binary /app")
+        assert errors == []
+
+    @pytest.mark.asyncio
+    async def test_validate_too_long(self):
+        cfg = DockerBuildConfig(max_dockerfile_lines=5)
+        backend = DockerBuildBackend(cfg)
+        dockerfile = "FROM python:3.11\n" + "\n".join(f"RUN echo {i}" for i in range(10))
+        errors = await backend.validate(dockerfile)
+        assert any("too long" in e.lower() for e in errors)
+
+    @pytest.mark.asyncio
+    async def test_validate_privileged_instructions(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        errors = await backend.validate("FROM python:3.11\nUSER root\nRUN echo hi")
+        assert any("privileged" in e.lower() or "Privileged" in e for e in errors)
+
+    @pytest.mark.asyncio
+    async def test_validate_multistage_build(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        dockerfile = (
+            "FROM python:3.11 AS builder\n"
+            "RUN pip install build\n"
+            "FROM python:3.11-slim\n"
+            "COPY --from=builder /app /app\n"
+        )
+        errors = await backend.validate(dockerfile)
+        assert errors == []
+
+    @pytest.mark.asyncio
+    async def test_build_validation_failure(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        result = await backend.build("FROM malicious/image\nRUN echo hi", "test:v1")
+        assert not result.success
+        assert "Validation failed" in result.error
+
+    @pytest.mark.asyncio
+    async def test_build_docker_not_installed(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        # Mock subprocess to simulate docker not found
+        with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
+            result = await backend.build("FROM python:3.11\nRUN echo hi", "test:v1")
+        assert not result.success
+        assert "not installed" in result.error
+
+    @pytest.mark.asyncio
+    async def test_build_timeout(self):
+        cfg = DockerBuildConfig(build_timeout_seconds=0)
+        backend = DockerBuildBackend(cfg)
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(side_effect=asyncio.TimeoutError)
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await backend.build("FROM python:3.11\nRUN echo hi", "test:v1")
+        assert not result.success
+        assert "timed out" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_build_failure(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"", b"error: something broke"))
+        mock_proc.returncode = 1
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await backend.build("FROM python:3.11\nRUN echo hi", "test:v1")
+        assert not result.success
+        assert "something broke" in result.error
+
+    @pytest.mark.asyncio
+    async def test_build_success(self):
+        cfg = DockerBuildConfig(registry="ghcr.io", namespace="testorg")
+        backend = DockerBuildBackend(cfg)
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"Successfully built", b""))
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await backend.build("FROM python:3.11\nRUN echo hi", "train:v1")
+        assert result.success
+        assert result.image_ref == "ghcr.io/testorg/train:v1"
+
+    @pytest.mark.asyncio
+    async def test_push_docker_not_installed(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError),
+            pytest.raises(RuntimeError, match="not installed"),
+        ):
+            await backend.push("test:v1")
+
+    @pytest.mark.asyncio
+    async def test_push_success_no_auth(self):
+        cfg = DockerBuildConfig(registry="ghcr.io", namespace="org")
+        backend = DockerBuildBackend(cfg)
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"Pushed", b""))
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            uri = await backend.push("train:v1")
+        assert uri == "ghcr.io/org/train:v1"
+
+    @pytest.mark.asyncio
+    async def test_push_with_auth(self):
+        cfg = DockerBuildConfig(
+            registry="ghcr.io",
+            namespace="org",
+            registry_user="user",
+            registry_token="secret-token",
+        )
+        backend = DockerBuildBackend(cfg)
+
+        call_count = 0
+
+        async def mock_exec(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            proc = AsyncMock()
+            proc.communicate = AsyncMock(return_value=(b"ok", b""))
+            proc.returncode = 0
+            return proc
+
+        with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
+            uri = await backend.push("train:v1")
+        assert uri == "ghcr.io/org/train:v1"
+        assert call_count == 2  # login + push
+
+    @pytest.mark.asyncio
+    async def test_push_failure(self):
+        cfg = DockerBuildConfig(registry="ghcr.io", namespace="org")
+        backend = DockerBuildBackend(cfg)
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"", b"denied"))
+        mock_proc.returncode = 1
+
+        with (
+            patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+            pytest.raises(RuntimeError, match="Push failed"),
+        ):
+            await backend.push("train:v1")
+
+    @pytest.mark.asyncio
+    async def test_build_and_push_success(self):
+        cfg = DockerBuildConfig(registry="ghcr.io", namespace="org")
+        backend = DockerBuildBackend(cfg)
+
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"ok", b""))
+        mock_proc.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await backend.build_and_push("FROM python:3.11\nRUN echo hi", "train:v1")
+        assert result.success
+        assert result.image_ref == "ghcr.io/org/train:v1"
+
+    @pytest.mark.asyncio
+    async def test_build_and_push_build_fails(self):
+        cfg = DockerBuildConfig()
+        backend = DockerBuildBackend(cfg)
+        result = await backend.build_and_push("FROM malicious/img\nRUN echo", "train:v1")
+        assert not result.success
+        assert "Validation failed" in result.error
+
+    @pytest.mark.asyncio
+    async def test_build_and_push_push_fails(self):
+        cfg = DockerBuildConfig(registry="ghcr.io", namespace="org")
+        backend = DockerBuildBackend(cfg)
+
+        # Build succeeds, push fails
+        build_proc = AsyncMock()
+        build_proc.communicate = AsyncMock(return_value=(b"ok", b""))
+        build_proc.returncode = 0
+
+        push_proc = AsyncMock()
+        push_proc.communicate = AsyncMock(return_value=(b"", b"denied"))
+        push_proc.returncode = 1
+
+        call_count = 0
+
+        async def mock_exec(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return build_proc
+            return push_proc
+
+        with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
+            result = await backend.build_and_push("FROM python:3.11\nRUN echo hi", "train:v1")
+        assert not result.success
+        assert "Push failed" in result.error
+
+    def test_full_tag(self):
+        cfg = DockerBuildConfig(registry="ghcr.io", namespace="org")
+        backend = DockerBuildBackend(cfg)
+        assert backend._full_tag("train:v1") == "ghcr.io/org/train:v1"
+
+    def test_full_tag_already_qualified(self):
+        cfg = DockerBuildConfig(registry="ghcr.io", namespace="org")
+        backend = DockerBuildBackend(cfg)
+        assert backend._full_tag("ghcr.io/org/train:v1") == "ghcr.io/org/train:v1"
+
+    def test_full_tag_no_namespace(self):
+        cfg = DockerBuildConfig(registry="ghcr.io", namespace="")
+        backend = DockerBuildBackend(cfg)
+        assert backend._full_tag("train:v1") == "ghcr.io/train:v1"
+
+
+# ── Render Dockerfile tests ──────────────────────────────────
+
+
+class TestRenderDockerfile:
+    def test_basic(self):
+        result = _render_dockerfile("python:3.11", ["torch", "numpy"], "python train.py")
+        assert "FROM python:3.11" in result
+        assert "pip install --no-cache-dir torch numpy" in result
+        assert "ENTRYPOINT" in result
+        assert "python" in result
+        assert "train.py" in result
+
+    def test_no_dependencies(self):
+        result = _render_dockerfile("python:3.11", [], "python train.py")
+        assert "FROM python:3.11" in result
+        assert "pip install" not in result
+
+    def test_custom_workdir(self):
+        result = _render_dockerfile("python:3.11", [], "echo hi", workdir="/workspace")
+        assert "WORKDIR /workspace" in result
+
+    def test_env_vars(self):
+        result = _render_dockerfile("python:3.11", [], "echo hi", env={"CUDA_VISIBLE_DEVICES": "0"})
+        assert "ENV CUDA_VISIBLE_DEVICES=0" in result
+
+
+# ── MCP Tools: write_dockerfile and build_image ──────────────
+
+
+class TestBuildMCPTools:
+    def _make_state_with_build(self, build_backend=None):
+        """Create a FrameworkState with compute and optional build backend."""
+        from ganglion.orchestration.pipeline import PipelineDef, StageDef
+        from ganglion.orchestration.task_context import MetricDef, OutputSpec, SubnetConfig, TaskDef
+        from ganglion.state.agent_registry import AgentRegistry
+        from ganglion.state.framework_state import FrameworkState
+        from ganglion.state.tool_registry import ToolRegistry
+
+        mock = MockBackend()
+        router = ComputeRouter(
+            backends={"mock": mock},
+            routes=[ComputeRoute(pattern="default", backend="mock")],
+        )
+        return FrameworkState(
+            subnet_config=SubnetConfig(
+                netuid=99,
+                name="Test",
+                metrics=[MetricDef("acc", "maximize")],
+                tasks={"main": TaskDef("main")},
+                output_spec=OutputSpec(format="test"),
+            ),
+            pipeline_def=PipelineDef(name="test", stages=[StageDef(name="train", agent="Trainer")]),
+            tool_registry=ToolRegistry(),
+            agent_registry=AgentRegistry(),
+            compute_router=router,
+            build_backend=build_backend,
+        )
+
+    def test_register_build_tools(self):
+        state = self._make_state_with_build()
+        register_compute_tools(state)
+        assert state.tool_registry.has("write_dockerfile")
+        assert state.tool_registry.has("validate_dockerfile")
+        assert state.tool_registry.has("build_image")
+
+    @pytest.mark.asyncio
+    async def test_write_dockerfile_no_build_backend(self):
+        state = self._make_state_with_build(build_backend=None)
+        register_compute_tools(state)
+        tool = state.tool_registry.get("write_dockerfile")
+        result = await tool.func(
+            base_image="python:3.11",
+            dependencies="torch,numpy",
+            entrypoint="python train.py",
+            tag="test:v1",
+        )
+        data = json.loads(result)
+        assert data["valid"] is True
+        assert "FROM python:3.11" in data["dockerfile"]
+        assert data["tag"] == "test:v1"
+
+    @pytest.mark.asyncio
+    async def test_write_dockerfile_with_validation(self):
+        cfg = DockerBuildConfig()
+        build = DockerBuildBackend(cfg)
+        state = self._make_state_with_build(build_backend=build)
+        register_compute_tools(state)
+        tool = state.tool_registry.get("write_dockerfile")
+
+        # Allowed base image
+        result = await tool.func(
+            base_image="nvidia/pytorch:24.01",
+            dependencies="transformers",
+            entrypoint="python train.py",
+            tag="exp:v1",
+        )
+        data = json.loads(result)
+        assert data["valid"] is True
+        assert data["validation_errors"] == []
+
+    @pytest.mark.asyncio
+    async def test_write_dockerfile_validation_fails(self):
+        cfg = DockerBuildConfig()
+        build = DockerBuildBackend(cfg)
+        state = self._make_state_with_build(build_backend=build)
+        register_compute_tools(state)
+        tool = state.tool_registry.get("write_dockerfile")
+
+        result = await tool.func(
+            base_image="evil/image:latest",
+            dependencies="torch",
+            entrypoint="python train.py",
+            tag="exp:v1",
+        )
+        data = json.loads(result)
+        assert data["valid"] is False
+        assert len(data["validation_errors"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_build_image_no_backend(self):
+        state = self._make_state_with_build(build_backend=None)
+        register_compute_tools(state)
+        tool = state.tool_registry.get("build_image")
+        result = await tool.func(dockerfile="FROM python:3.11", tag="test:v1")
+        data = json.loads(result)
+        assert data["success"] is False
+        assert "No build backend" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_build_image_success(self):
+        cfg = DockerBuildConfig(registry="ghcr.io", namespace="org")
+        build = DockerBuildBackend(cfg)
+        build.build_and_push = AsyncMock(
+            return_value=BuildResult(
+                image_ref="ghcr.io/org/train:v1",
+                success=True,
+                duration_seconds=45.2,
+            )
+        )
+        state = self._make_state_with_build(build_backend=build)
+        register_compute_tools(state)
+        tool = state.tool_registry.get("build_image")
+        result = await tool.func(dockerfile="FROM python:3.11\nRUN echo hi", tag="train:v1")
+        data = json.loads(result)
+        assert data["success"] is True
+        assert data["image_ref"] == "ghcr.io/org/train:v1"
