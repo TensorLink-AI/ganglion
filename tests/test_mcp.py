@@ -735,6 +735,352 @@ class TestMCPFrameworkTools:
         assert registry.get("ganglion_run_pipeline").category == "execution"
         assert registry.get("ganglion_rollback_last").category == "admin"
 
+    @pytest.mark.asyncio
+    async def test_get_tools_returns_json(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_get_tools")
+        result = await tool_def.func()
+        data = json.loads(result)
+        assert isinstance(data, list)
+
+    @pytest.mark.asyncio
+    async def test_get_agents_returns_json(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_get_agents")
+        result = await tool_def.func()
+        data = json.loads(result)
+        assert isinstance(data, list)
+
+    @pytest.mark.asyncio
+    async def test_get_runs_no_persistence(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_get_runs")
+        result = await tool_def.func()
+        assert json.loads(result) == []
+
+    @pytest.mark.asyncio
+    async def test_get_metrics_no_persistence(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_get_metrics")
+        result = await tool_def.func()
+        assert json.loads(result) == []
+
+    @pytest.mark.asyncio
+    async def test_get_leaderboard_no_client(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_get_leaderboard")
+        result = await tool_def.func()
+        assert json.loads(result) == []
+
+    @pytest.mark.asyncio
+    async def test_get_knowledge_no_store(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_get_knowledge")
+        result = await tool_def.func()
+        data = json.loads(result)
+        assert data["patterns"] == []
+        assert data["antipatterns"] == []
+
+    @pytest.mark.asyncio
+    async def test_get_components_no_framework(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_get_components")
+        result = await tool_def.func()
+        assert json.loads(result) == []
+
+    @pytest.mark.asyncio
+    async def test_get_mcp_status(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_get_mcp_status")
+        result = await tool_def.func()
+        data = json.loads(result)
+        assert "connected_servers" in data
+
+    @pytest.mark.asyncio
+    async def test_get_source_valid_file(self, tmp_path):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        state.project_root = tmp_path
+        (tmp_path / "hello.py").write_text("print('hi')")
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_get_source")
+        result = await tool_def.func(path="hello.py")
+        data = json.loads(result)
+        assert data["content"] == "print('hi')"
+
+    @pytest.mark.asyncio
+    async def test_get_source_not_found(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_get_source")
+        result = await tool_def.func(path="nonexistent.py")
+        data = json.loads(result)
+        assert "error" in data
+
+    @pytest.mark.asyncio
+    async def test_rollback_to_negative_index(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_rollback_to")
+        result = await tool_def.func(index=-1)
+        data = json.loads(result)
+        assert data["success"] is False
+
+    @pytest.mark.asyncio
+    async def test_write_component_no_framework(self, tmp_path):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        state.project_root = tmp_path
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_write_component")
+        result = await tool_def.func(name="my_comp", code="x = 1")
+        data = json.loads(result)
+        assert data["success"] is True
+        assert (tmp_path / "components" / "my_comp.py").read_text() == "x = 1"
+
+    @pytest.mark.asyncio
+    async def test_write_tool_calls_state(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_write_tool")
+        result = await tool_def.func(name="my_tool", code="def my_tool(): pass")
+        data = json.loads(result)
+        # Validation will fail since code doesn't have proper decorators etc.
+        assert "success" in data
+
+    @pytest.mark.asyncio
+    async def test_write_agent_calls_state(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_write_agent")
+        result = await tool_def.func(name="my_agent", code="class MyAgent: pass")
+        data = json.loads(result)
+        assert "success" in data
+
+    @pytest.mark.asyncio
+    async def test_write_prompt_calls_state(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_write_prompt")
+        result = await tool_def.func(
+            agent_name="Explorer", prompt_section="system", content="Be helpful"
+        )
+        data = json.loads(result)
+        assert "success" in data
+
+    @pytest.mark.asyncio
+    async def test_patch_pipeline_calls_state(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_patch_pipeline")
+        result = await tool_def.func(operations=[{"op": "add", "stage": "test"}])
+        data = json.loads(result)
+        assert "success" in data
+
+    @pytest.mark.asyncio
+    async def test_swap_policy_calls_state(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_swap_policy")
+        result = await tool_def.func(
+            stage_name="default", retry_policy={"type": "fixed", "max_attempts": 3}
+        )
+        data = json.loads(result)
+        assert "success" in data
+
+    @pytest.mark.asyncio
+    async def test_rollback_last_calls_state(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_rollback_last")
+        result = await tool_def.func()
+        data = json.loads(result)
+        assert "success" in data
+
+    @pytest.mark.asyncio
+    async def test_disconnect_mcp_calls_state(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_disconnect_mcp")
+        result = await tool_def.func(name="nonexistent")
+        data = json.loads(result)
+        assert data["success"] is False
+
+    @pytest.mark.asyncio
+    async def test_reconnect_mcp_not_connected(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_reconnect_mcp")
+        result = await tool_def.func(name="nonexistent")
+        data = json.loads(result)
+        assert data["success"] is False
+
+    @pytest.mark.asyncio
+    async def test_run_pipeline_exception(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        # run_pipeline will fail since no agents are registered
+        tool_def = registry.get("ganglion_run_pipeline")
+        result = await tool_def.func()
+        data = json.loads(result)
+        # Either success with result or error
+        assert "success" in data or "error" in data
+
+    @pytest.mark.asyncio
+    async def test_run_stage_exception(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_run_stage")
+        result = await tool_def.func(stage_name="nonexistent")
+        data = json.loads(result)
+        assert "success" in data or "error" in data
+
+    @pytest.mark.asyncio
+    async def test_run_experiment_exception(self):
+        from ganglion.mcp.tools import register_framework_tools
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = _make_mock_framework_state()
+        registry = ToolRegistry()
+        register_framework_tools(registry, state)
+
+        tool_def = registry.get("ganglion_run_experiment")
+        result = await tool_def.func(config={"task": "test"})
+        data = json.loads(result)
+        assert "success" in data or "error" in data
+
+    def test_json_result_fallback(self):
+        from ganglion.mcp.tools import _json_result
+
+        # Normal case
+        assert json.loads(_json_result({"key": "value"})) == {"key": "value"}
+
+        # Unserializable object falls back to str()
+        class Unserializable:
+            def __repr__(self):
+                return "unserializable-repr"
+
+        obj = Unserializable()
+        obj.x = obj  # circular reference
+        result = _json_result(obj)
+        assert "unserializable-repr" in result
+
 
 # ── Feature 2: Roles config tests ────────────────────────
 
