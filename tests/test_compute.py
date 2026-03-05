@@ -20,7 +20,14 @@ from ganglion.compute.backends.runpod import RunPodBackend, RunPodConfig
 from ganglion.compute.backends.ssh import SSHBackend, SSHConfig
 from ganglion.compute.job_manager import JobManager
 from ganglion.compute.mcp_tools import _render_dockerfile, register_compute_tools
-from ganglion.compute.protocol import BuildResult, JobHandle, JobResult, JobSpec, JobStatus
+from ganglion.compute.protocol import (
+    BuildResult,
+    DockerPrefab,
+    JobHandle,
+    JobResult,
+    JobSpec,
+    JobStatus,
+)
 from ganglion.compute.router import ComputeRoute, ComputeRouter
 
 # ── Protocol / data class tests ────────────────────────────
@@ -74,6 +81,76 @@ class TestJobStatus:
         assert len(JobStatus) == 7
         assert JobStatus.PENDING.value == "pending"
         assert JobStatus.TIMEOUT.value == "timeout"
+
+
+class TestDockerPrefab:
+    def test_to_job_spec_defaults(self):
+        prefab = DockerPrefab(name="train", image="registry/train:v1")
+        spec = prefab.to_job_spec(["python", "train.py"])
+        assert spec.image == "registry/train:v1"
+        assert spec.command == ["python", "train.py"]
+        assert spec.gpu_count == 0
+        assert spec.cpu_cores == 2
+        assert spec.memory_gb == 8
+        assert spec.timeout_seconds == 3600
+        assert spec.artifacts_dir == "/outputs"
+        assert spec.upload_paths == []
+        assert spec.env == {}
+
+    def test_to_job_spec_with_prefab_fields(self):
+        prefab = DockerPrefab(
+            name="gpu-train",
+            image="registry/train:v2",
+            gpu_type="A100",
+            gpu_count=2,
+            memory_gb=64,
+            timeout_seconds=7200,
+            env={"CUDA_VISIBLE_DEVICES": "all"},
+        )
+        spec = prefab.to_job_spec(["python", "train.py"])
+        assert spec.image == "registry/train:v2"
+        assert spec.gpu_type == "A100"
+        assert spec.gpu_count == 2
+        assert spec.memory_gb == 64
+        assert spec.timeout_seconds == 7200
+        assert spec.env == {"CUDA_VISIBLE_DEVICES": "all"}
+
+    def test_to_job_spec_overrides(self):
+        prefab = DockerPrefab(
+            name="train",
+            image="registry/train:v1",
+            gpu_type="A100",
+            gpu_count=1,
+            memory_gb=16,
+        )
+        spec = prefab.to_job_spec(
+            ["python", "train.py"],
+            gpu_count=4,
+            timeout_seconds=9000,
+        )
+        assert spec.gpu_type == "A100"  # from prefab
+        assert spec.gpu_count == 4  # overridden
+        assert spec.timeout_seconds == 9000  # overridden
+        assert spec.memory_gb == 16  # from prefab
+
+    def test_env_merging(self):
+        prefab = DockerPrefab(
+            name="train",
+            image="registry/train:v1",
+            env={"BASE_KEY": "base", "SHARED": "from_prefab"},
+        )
+        spec = prefab.to_job_spec(
+            ["python", "train.py"],
+            env={"SHARED": "from_override", "NEW_KEY": "new"},
+        )
+        assert spec.env["BASE_KEY"] == "base"
+        assert spec.env["SHARED"] == "from_override"
+        assert spec.env["NEW_KEY"] == "new"
+
+    def test_image_override(self):
+        prefab = DockerPrefab(name="train", image="registry/train:v1")
+        spec = prefab.to_job_spec(["echo"], image="registry/train:v2")
+        assert spec.image == "registry/train:v2"
 
 
 # ── MockBackend for testing ─────────────────────────────────

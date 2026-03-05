@@ -58,6 +58,23 @@ subnet_config = SubnetConfig(
 | `tasks` | `dict[str, TaskDef]` | Named tasks (name, weight, metadata) |
 | `output_spec` | `OutputSpec` | Expected output format and constraints |
 | `constraints` | `dict` | Arbitrary constraints passed to agents |
+| `docker_prefabs` | `dict[str, DockerPrefab]` | Named container templates (optional, default `{}`) |
+
+**DockerPrefab fields** (`from ganglion.compute.protocol import DockerPrefab`):
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `str` | — | Prefab identifier |
+| `image` | `str` | — | Container image (e.g. `ghcr.io/org/trainer:latest`) |
+| `env` | `dict[str, str]` | `{}` | Default environment variables |
+| `gpu_type` | `str \| None` | `None` | GPU type (e.g. `"A100"`, `"A10G"`) |
+| `gpu_count` | `int` | `0` | Number of GPUs |
+| `cpu_cores` | `int` | `2` | CPU cores |
+| `memory_gb` | `int` | `8` | Memory in GB |
+| `timeout_seconds` | `int` | `3600` | Job timeout |
+| `artifacts_dir` | `str` | `"/outputs"` | Where the container writes artifacts |
+
+A prefab is infrastructure config — it declares what a container looks like, not what it does. Call `prefab.to_job_spec(command, **overrides)` to create a `JobSpec`. The command is supplied per invocation; overrides layer on top of prefab defaults (`env` dicts are merged, scalar fields are replaced).
 
 **MetricDef fields:**
 
