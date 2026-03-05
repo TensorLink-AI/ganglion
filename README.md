@@ -37,8 +37,8 @@ Copy `.env.example` to `.env` and configure:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `OPENAI_API_KEY` | Yes (for LLM) | — | OpenAI API key |
-| `OPENAI_BASE_URL` | No | — | Custom API base URL |
+| `LLM_PROVIDER_API_KEY` | Yes (for LLM) | — | LLM provider API key |
+| `LLM_PROVIDER_BASE_URL` | No | — | Custom API base URL |
 | `GANGLION_LLM_MODEL` | No | `gpt-4o` | LLM model name |
 | `GANGLION_HOST` | No | `127.0.0.1` | Server bind host |
 | `GANGLION_PORT` | No | `8899` | Server bind port |
@@ -352,7 +352,7 @@ pytest tests/ -v --cov=ganglion --cov-report=term-missing
 
 ```bash
 docker build -t ganglion .
-docker run -p 8899:8899 -e OPENAI_API_KEY=sk-... -v ./my-subnet:/app/project ganglion
+docker run -p 8899:8899 -e LLM_PROVIDER_API_KEY=sk-... -v ./my-subnet:/app/project ganglion
 ```
 
 ### From Source
