@@ -1521,9 +1521,7 @@ class TestRenderDockerfile:
         assert "WORKDIR /workspace" in result
 
     def test_env_vars(self):
-        result = _render_dockerfile(
-            "python:3.11", [], "echo hi", env={"CUDA_VISIBLE_DEVICES": "0"}
-        )
+        result = _render_dockerfile("python:3.11", [], "echo hi", env={"CUDA_VISIBLE_DEVICES": "0"})
         assert "ENV CUDA_VISIBLE_DEVICES=0" in result
 
 

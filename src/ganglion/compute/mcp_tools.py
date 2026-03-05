@@ -137,12 +137,14 @@ def register_compute_tools(state: FrameworkState) -> None:
             return json.dumps({"success": False, "error": "No build backend configured"})
 
         build_result = await state.build_backend.build_and_push(dockerfile, tag)
-        return json.dumps({
-            "success": build_result.success,
-            "image_ref": build_result.image_ref,
-            "error": build_result.error,
-            "duration_seconds": build_result.duration_seconds,
-        })
+        return json.dumps(
+            {
+                "success": build_result.success,
+                "image_ref": build_result.image_ref,
+                "error": build_result.error,
+                "duration_seconds": build_result.duration_seconds,
+            }
+        )
 
     _tools: list[tuple[str, Any, str, dict[str, Any]]] = [
         (

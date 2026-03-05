@@ -43,15 +43,17 @@ class DockerBuildConfig:
     registry_user: str = ""
     registry_token: str = ""
     namespace: str = ""
-    allowed_base_images: list[str] = field(default_factory=lambda: [
-        "python:*",
-        "nvidia/cuda:*",
-        "nvidia/pytorch:*",
-        "nvidia/tensorflow:*",
-        "pytorch/pytorch:*",
-        "ubuntu:*",
-        "debian:*",
-    ])
+    allowed_base_images: list[str] = field(
+        default_factory=lambda: [
+            "python:*",
+            "nvidia/cuda:*",
+            "nvidia/pytorch:*",
+            "nvidia/tensorflow:*",
+            "pytorch/pytorch:*",
+            "ubuntu:*",
+            "debian:*",
+        ]
+    )
     max_dockerfile_lines: int = 200
     build_timeout_seconds: int = 600
 
@@ -119,8 +121,7 @@ class DockerBuildBackend:
                 if base_image.lower() == "scratch":
                     continue  # scratch is always allowed
                 if not any(
-                    _match_glob(allowed, base_image)
-                    for allowed in self._config.allowed_base_images
+                    _match_glob(allowed, base_image) for allowed in self._config.allowed_base_images
                 ):
                     errors.append(
                         f"Base image '{base_image}' not in allowed list. "
@@ -130,9 +131,7 @@ class DockerBuildBackend:
         # Check for privileged instructions
         privileged = _PRIVILEGED_INSTRUCTIONS.findall(dockerfile)
         if privileged:
-            errors.append(
-                f"Privileged instructions not allowed: {privileged}"
-            )
+            errors.append(f"Privileged instructions not allowed: {privileged}")
 
         return errors
 
@@ -213,8 +212,11 @@ class DockerBuildBackend:
         # Login if credentials are available
         if self._config.registry_token:
             login_cmd = [
-                "docker", "login", self._config.registry,
-                "-u", self._config.registry_user or "_token",
+                "docker",
+                "login",
+                self._config.registry,
+                "-u",
+                self._config.registry_user or "_token",
                 "--password-stdin",
             ]
             try:
@@ -244,9 +246,7 @@ class DockerBuildBackend:
                 timeout=self._config.build_timeout_seconds,
             )
         except TimeoutError as e:
-            raise RuntimeError(
-                f"Push timed out after {self._config.build_timeout_seconds}s"
-            ) from e
+            raise RuntimeError(f"Push timed out after {self._config.build_timeout_seconds}s") from e
         except FileNotFoundError as e:
             raise RuntimeError("Docker is not installed or not in PATH") from e
 
