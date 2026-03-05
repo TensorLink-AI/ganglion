@@ -1,14 +1,20 @@
 """Tests for the compute module — protocol, backends, router, job manager."""
 
 import asyncio
+import json
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from ganglion.compute.artifacts import LocalArtifactStore
 from ganglion.compute.backends.local import LocalBackend
+from ganglion.compute.backends.runpod import RunPodBackend, RunPodConfig
+from ganglion.compute.backends.ssh import SSHBackend, SSHConfig
 from ganglion.compute.job_manager import JobManager
+from ganglion.compute.mcp_tools import register_compute_tools
 from ganglion.compute.protocol import JobHandle, JobResult, JobSpec, JobStatus
 from ganglion.compute.router import ComputeRoute, ComputeRouter
 
@@ -453,3 +459,730 @@ class TestLocalArtifactStore:
         await store.put("deep/nested/file.txt", b"content")
         data = await store.get("deep/nested/file.txt")
         assert data == b"content"
+
+
+# ── SSHBackend tests (mocked asyncssh) ──────────────────────
+
+
+def _make_ssh_run_result(stdout: str = "", returncode: int = 0) -> SimpleNamespace:
+    return SimpleNamespace(stdout=stdout, returncode=returncode)
+
+
+class TestSSHBackend:
+    def test_config_defaults(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        assert cfg.port == 22
+        assert cfg.remote_workdir == "/tmp/ganglion-jobs"
+        assert cfg.gpu_count == 0
+        assert cfg.labels == {}
+
+    def test_name_default(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        assert backend.name == "ssh-10.0.0.1"
+
+    def test_name_custom(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg, name="my-rig")
+        assert backend.name == "my-rig"
+
+    @pytest.mark.asyncio
+    async def test_submit(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        mock_conn.run = AsyncMock(return_value=_make_ssh_run_result())
+        backend._conn = mock_conn
+
+        spec = JobSpec(image="train:v1", command=["python", "train.py"])
+        handle = await backend.submit(spec)
+        assert handle.status == JobStatus.RUNNING
+        assert handle.backend_name == "ssh-10.0.0.1"
+        assert handle.job_id.startswith("ssh-")
+        assert "remote_dir" in handle.metadata
+        assert mock_conn.run.call_count == 2  # mkdir + launch
+
+    @pytest.mark.asyncio
+    async def test_submit_with_uploads(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        mock_conn.run = AsyncMock(return_value=_make_ssh_run_result())
+        mock_sftp = AsyncMock()
+        mock_conn.start_sftp_client = MagicMock(return_value=mock_sftp)
+        mock_sftp.__aenter__ = AsyncMock(return_value=mock_sftp)
+        mock_sftp.__aexit__ = AsyncMock(return_value=False)
+        backend._conn = mock_conn
+
+        spec = JobSpec(
+            image="train:v1",
+            command=["python", "train.py"],
+            upload_paths=["/data/dataset.csv"],
+        )
+        handle = await backend.submit(spec)
+        assert handle.status == JobStatus.RUNNING
+        mock_sftp.put.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_poll_running(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        mock_conn.run = AsyncMock(return_value=_make_ssh_run_result("RUNNING"))
+        backend._conn = mock_conn
+
+        handle = JobHandle(
+            job_id="ssh-test",
+            backend_name="ssh-10.0.0.1",
+            status=JobStatus.RUNNING,
+            metadata={"remote_dir": "/tmp/ganglion-jobs/ssh-test"},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_poll_done_success(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        # First call: kill -0 returns DONE
+        # Second call: cat exit_code returns 0
+        mock_conn.run = AsyncMock(
+            side_effect=[
+                _make_ssh_run_result("DONE"),
+                _make_ssh_run_result("0"),
+            ]
+        )
+        backend._conn = mock_conn
+
+        handle = JobHandle(
+            job_id="ssh-test",
+            backend_name="ssh-10.0.0.1",
+            status=JobStatus.RUNNING,
+            metadata={"remote_dir": "/tmp/ganglion-jobs/ssh-test"},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.SUCCEEDED
+
+    @pytest.mark.asyncio
+    async def test_poll_done_failed(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        mock_conn.run = AsyncMock(
+            side_effect=[
+                _make_ssh_run_result("DONE"),
+                _make_ssh_run_result("1"),
+            ]
+        )
+        backend._conn = mock_conn
+
+        handle = JobHandle(
+            job_id="ssh-test",
+            backend_name="ssh-10.0.0.1",
+            status=JobStatus.RUNNING,
+            metadata={"remote_dir": "/tmp/ganglion-jobs/ssh-test"},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_poll_invalid_exit_code(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        mock_conn.run = AsyncMock(
+            side_effect=[
+                _make_ssh_run_result("DONE"),
+                _make_ssh_run_result("not-a-number"),
+            ]
+        )
+        backend._conn = mock_conn
+
+        handle = JobHandle(
+            job_id="ssh-test",
+            backend_name="ssh-10.0.0.1",
+            status=JobStatus.RUNNING,
+            metadata={"remote_dir": "/tmp/ganglion-jobs/ssh-test"},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_cancel(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        mock_conn.run = AsyncMock(return_value=_make_ssh_run_result())
+        backend._conn = mock_conn
+
+        handle = JobHandle(
+            job_id="ssh-test",
+            backend_name="ssh-10.0.0.1",
+            status=JobStatus.RUNNING,
+            metadata={"remote_dir": "/tmp/ganglion-jobs/ssh-test"},
+        )
+        await backend.cancel(handle)
+        assert handle.status == JobStatus.CANCELLED
+
+    @pytest.mark.asyncio
+    async def test_collect(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        mock_conn.run = AsyncMock(
+            side_effect=[
+                _make_ssh_run_result("stdout output"),
+                _make_ssh_run_result("stderr output"),
+            ]
+        )
+        # Mock SFTP that raises to skip artifact download
+        mock_sftp = AsyncMock()
+        mock_sftp.__aenter__ = AsyncMock(side_effect=Exception("no sftp"))
+        mock_sftp.__aexit__ = AsyncMock(return_value=False)
+        mock_conn.start_sftp_client = MagicMock(return_value=mock_sftp)
+        backend._conn = mock_conn
+
+        handle = JobHandle(
+            job_id="ssh-test",
+            backend_name="ssh-10.0.0.1",
+            status=JobStatus.SUCCEEDED,
+            metadata={"remote_dir": "/tmp/ganglion-jobs/ssh-test", "exit_code": 0},
+        )
+        result = await backend.collect(handle)
+        assert result.stdout == "stdout output"
+        assert result.stderr == "stderr output"
+        assert result.exit_code == 0
+
+    @pytest.mark.asyncio
+    async def test_cleanup(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        mock_conn.run = AsyncMock(return_value=_make_ssh_run_result())
+        backend._conn = mock_conn
+
+        handle = JobHandle(
+            job_id="ssh-test",
+            backend_name="ssh-10.0.0.1",
+            status=JobStatus.SUCCEEDED,
+            metadata={"remote_dir": "/tmp/ganglion-jobs/ssh-test"},
+        )
+        await backend.cleanup(handle)
+        mock_conn.run.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_error_handled(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        mock_conn.run = AsyncMock(side_effect=Exception("connection lost"))
+        backend._conn = mock_conn
+
+        handle = JobHandle(
+            job_id="ssh-test",
+            backend_name="ssh-10.0.0.1",
+            status=JobStatus.SUCCEEDED,
+            metadata={"remote_dir": "/tmp/ganglion-jobs/ssh-test"},
+        )
+        # Should not raise
+        await backend.cleanup(handle)
+
+    @pytest.mark.asyncio
+    async def test_disconnect(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = MagicMock()
+        backend._conn = mock_conn
+        await backend.disconnect()
+        mock_conn.close.assert_called_once()
+        assert backend._conn is None
+
+    @pytest.mark.asyncio
+    async def test_disconnect_when_not_connected(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        await backend.disconnect()  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_ensure_connected_import_error(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        with (
+            patch.dict("sys.modules", {"asyncssh": None}),
+            pytest.raises(ImportError, match="asyncssh"),
+        ):
+            await backend._ensure_connected()
+
+    @pytest.mark.asyncio
+    async def test_ensure_connected_reuses(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        backend._conn = mock_conn
+        result = await backend._ensure_connected()
+        assert result is mock_conn
+
+    @pytest.mark.asyncio
+    async def test_submit_with_env(self):
+        cfg = SSHConfig(host="10.0.0.1", user="miner")
+        backend = SSHBackend(cfg)
+        mock_conn = AsyncMock()
+        mock_conn.run = AsyncMock(return_value=_make_ssh_run_result())
+        backend._conn = mock_conn
+
+        spec = JobSpec(
+            image="train:v1",
+            command=["python", "train.py"],
+            env={"LR": "0.001"},
+        )
+        handle = await backend.submit(spec)
+        assert handle.status == JobStatus.RUNNING
+        # Check that env vars were included in the launch command
+        launch_call = mock_conn.run.call_args_list[-1]
+        assert "LR=0.001" in launch_call[0][0]
+
+
+# ── RunPodBackend tests (mocked aiohttp) ────────────────────
+
+
+class TestRunPodBackend:
+    def test_config_defaults(self):
+        cfg = RunPodConfig(api_key="test-key")
+        assert cfg.preferred_gpu == "NVIDIA A100 80GB"
+        assert cfg.cloud_type == "COMMUNITY"
+        assert cfg.max_bid_per_gpu == 0.5
+
+    def test_name(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        assert backend.name == "runpod"
+        backend2 = RunPodBackend(cfg, name="runpod-us")
+        assert backend2.name == "runpod-us"
+
+    def test_resolve_gpu_any(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        assert backend._resolve_gpu("any") == "NVIDIA A100 80GB"
+        assert backend._resolve_gpu(None) == "NVIDIA A100 80GB"
+        assert backend._resolve_gpu("H100") == "H100"
+
+    def test_create_pod_mutation(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        query = backend._create_pod_mutation(
+            {
+                "name": "test-pod",
+                "imageName": "train:v1",
+                "gpuTypeId": "A100",
+                "gpuCount": 1,
+                "containerDiskInGb": 20,
+                "dockerArgs": "python train.py",
+            }
+        )
+        assert "podFindAndDeployOnDemand" in query
+        assert "test-pod" in query
+        assert "train:v1" in query
+        assert "COMMUNITY" in query
+
+    @pytest.mark.asyncio
+    async def test_api_request_import_error(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        with (
+            patch.dict("sys.modules", {"aiohttp": None}),
+            pytest.raises(ImportError, match="aiohttp"),
+        ):
+            await backend._api_request("query { test }")
+
+    @pytest.mark.asyncio
+    async def test_submit(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        backend._api_request = AsyncMock(
+            return_value={"data": {"podFindAndDeployOnDemand": {"id": "pod-abc123"}}}
+        )
+
+        spec = JobSpec(
+            image="train:v1",
+            command=["python", "train.py"],
+            gpu_type="A100",
+            gpu_count=1,
+        )
+        handle = await backend.submit(spec)
+        assert handle.job_id == "pod-abc123"
+        assert handle.status == JobStatus.PROVISIONING
+        assert handle.backend_name == "runpod"
+
+    @pytest.mark.asyncio
+    async def test_submit_fallback_id(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        backend._api_request = AsyncMock(return_value={"data": {}})
+
+        spec = JobSpec(image="train:v1", command=["python", "train.py"])
+        handle = await backend.submit(spec)
+        assert handle.job_id.startswith("runpod-")
+
+    @pytest.mark.asyncio
+    async def test_poll_running(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        backend._api_request = AsyncMock(
+            return_value={"data": {"pod": {"desiredStatus": "RUNNING"}}}
+        )
+
+        handle = JobHandle(
+            job_id="pod-abc",
+            backend_name="runpod",
+            status=JobStatus.PROVISIONING,
+            metadata={"pod_id": "pod-abc"},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_poll_exited(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        backend._api_request = AsyncMock(
+            return_value={"data": {"pod": {"desiredStatus": "EXITED"}}}
+        )
+
+        handle = JobHandle(
+            job_id="pod-abc",
+            backend_name="runpod",
+            status=JobStatus.RUNNING,
+            metadata={"pod_id": "pod-abc"},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.SUCCEEDED
+
+    @pytest.mark.asyncio
+    async def test_poll_error(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        backend._api_request = AsyncMock(return_value={"data": {"pod": {"desiredStatus": "ERROR"}}})
+
+        handle = JobHandle(
+            job_id="pod-abc",
+            backend_name="runpod",
+            status=JobStatus.RUNNING,
+            metadata={"pod_id": "pod-abc"},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_poll_unknown_status(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        backend._api_request = AsyncMock(
+            return_value={"data": {"pod": {"desiredStatus": "UNKNOWN_NEW_STATUS"}}}
+        )
+
+        handle = JobHandle(
+            job_id="pod-abc",
+            backend_name="runpod",
+            status=JobStatus.RUNNING,
+            metadata={"pod_id": "pod-abc"},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.PENDING  # fallback
+
+    @pytest.mark.asyncio
+    async def test_cancel(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        backend._api_request = AsyncMock(return_value={})
+
+        handle = JobHandle(
+            job_id="pod-abc",
+            backend_name="runpod",
+            status=JobStatus.RUNNING,
+            metadata={"pod_id": "pod-abc"},
+        )
+        await backend.cancel(handle)
+        assert handle.status == JobStatus.CANCELLED
+
+    @pytest.mark.asyncio
+    async def test_collect(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+
+        handle = JobHandle(
+            job_id="pod-abc",
+            backend_name="runpod",
+            status=JobStatus.SUCCEEDED,
+            metadata={"pod_id": "pod-abc"},
+        )
+        result = await backend.collect(handle)
+        assert result.job_id == "pod-abc"
+        assert result.status == JobStatus.SUCCEEDED
+
+    @pytest.mark.asyncio
+    async def test_cleanup(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        backend._api_request = AsyncMock(return_value={})
+
+        handle = JobHandle(
+            job_id="pod-abc",
+            backend_name="runpod",
+            status=JobStatus.SUCCEEDED,
+            metadata={"pod_id": "pod-abc"},
+        )
+        await backend.cleanup(handle)
+        backend._api_request.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_terminate_error_handled(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        backend._api_request = AsyncMock(side_effect=Exception("API error"))
+
+        handle = JobHandle(
+            job_id="pod-abc",
+            backend_name="runpod",
+            status=JobStatus.RUNNING,
+            metadata={"pod_id": "pod-abc"},
+        )
+        # Should not raise
+        await backend.cleanup(handle)
+
+    @pytest.mark.asyncio
+    async def test_get_pod_status_missing_pod(self):
+        cfg = RunPodConfig(api_key="test-key")
+        backend = RunPodBackend(cfg)
+        backend._api_request = AsyncMock(return_value={"data": {"pod": None}})
+        status = await backend._get_pod_status("missing-pod")
+        assert status == "UNKNOWN"
+
+
+# ── MCP Tools tests ─────────────────────────────────────────
+
+
+class TestMCPTools:
+    def _make_state_with_compute(self):
+        """Create a FrameworkState with compute configured."""
+        from ganglion.orchestration.pipeline import PipelineDef, StageDef
+        from ganglion.orchestration.task_context import MetricDef, OutputSpec, SubnetConfig, TaskDef
+        from ganglion.state.agent_registry import AgentRegistry
+        from ganglion.state.framework_state import FrameworkState
+        from ganglion.state.tool_registry import ToolRegistry
+
+        mock = MockBackend()
+        router = ComputeRouter(
+            backends={"mock": mock},
+            routes=[ComputeRoute(pattern="default", backend="mock")],
+        )
+        return FrameworkState(
+            subnet_config=SubnetConfig(
+                netuid=99,
+                name="Test",
+                metrics=[MetricDef("acc", "maximize")],
+                tasks={"main": TaskDef("main")},
+                output_spec=OutputSpec(format="test"),
+            ),
+            pipeline_def=PipelineDef(name="test", stages=[StageDef(name="train", agent="Trainer")]),
+            tool_registry=ToolRegistry(),
+            agent_registry=AgentRegistry(),
+            compute_router=router,
+        )
+
+    def test_register_compute_tools(self):
+        state = self._make_state_with_compute()
+        register_compute_tools(state)
+        assert state.tool_registry.has("compute_status")
+        assert state.tool_registry.has("compute_jobs")
+        assert state.tool_registry.has("compute_job_detail")
+        assert state.tool_registry.has("compute_routes")
+
+    def test_register_skips_without_compute(self):
+        from ganglion.orchestration.pipeline import PipelineDef, StageDef
+        from ganglion.orchestration.task_context import MetricDef, OutputSpec, SubnetConfig, TaskDef
+        from ganglion.state.agent_registry import AgentRegistry
+        from ganglion.state.framework_state import FrameworkState
+        from ganglion.state.tool_registry import ToolRegistry
+
+        state = FrameworkState(
+            subnet_config=SubnetConfig(
+                netuid=99,
+                name="Test",
+                metrics=[MetricDef("acc", "maximize")],
+                tasks={"main": TaskDef("main")},
+                output_spec=OutputSpec(format="test"),
+            ),
+            pipeline_def=PipelineDef(name="test", stages=[StageDef(name="train", agent="Trainer")]),
+            tool_registry=ToolRegistry(),
+            agent_registry=AgentRegistry(),
+        )
+        register_compute_tools(state)
+        assert not state.tool_registry.has("compute_status")
+
+    def test_register_idempotent(self):
+        state = self._make_state_with_compute()
+        register_compute_tools(state)
+        register_compute_tools(state)
+        assert state.tool_registry.has("compute_status")
+
+    @pytest.mark.asyncio
+    async def test_compute_status_tool(self):
+        state = self._make_state_with_compute()
+        register_compute_tools(state)
+        tool = state.tool_registry.get("compute_status")
+        result = await tool.func()
+        data = json.loads(result)
+        assert "backends" in data
+
+    @pytest.mark.asyncio
+    async def test_compute_jobs_tool(self):
+        state = self._make_state_with_compute()
+        register_compute_tools(state)
+        tool = state.tool_registry.get("compute_jobs")
+        result = await tool.func()
+        data = json.loads(result)
+        assert "active_jobs" in data
+
+    @pytest.mark.asyncio
+    async def test_compute_job_detail_not_found(self):
+        state = self._make_state_with_compute()
+        register_compute_tools(state)
+        tool = state.tool_registry.get("compute_job_detail")
+        result = await tool.func(job_id="nonexistent")
+        data = json.loads(result)
+        assert "error" in data
+
+    @pytest.mark.asyncio
+    async def test_compute_routes_tool(self):
+        state = self._make_state_with_compute()
+        register_compute_tools(state)
+        tool = state.tool_registry.get("compute_routes")
+        result = await tool.func()
+        data = json.loads(result)
+        assert "routes" in data
+        assert len(data["routes"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_compute_job_detail_cached_result(self):
+        state = self._make_state_with_compute()
+        register_compute_tools(state)
+
+        # Submit and wait for a job to populate cached results
+        spec = JobSpec(image="test:latest", command=["train"])
+        result = await state.job_manager.submit_and_wait("train", spec)
+
+        tool = state.tool_registry.get("compute_job_detail")
+        detail = await tool.func(job_id=result.job_id)
+        data = json.loads(detail)
+        assert data["job_id"] == result.job_id
+        assert data["status"] == "succeeded"
+
+
+# ── Router edge case tests ──────────────────────────────────
+
+
+class TestComputeRouterEdgeCases:
+    def test_resolve_with_overrides_no_overrides(self):
+        mock = MockBackend("gpu")
+        router = ComputeRouter(
+            backends={"gpu": mock},
+            routes=[ComputeRoute(pattern="default", backend="gpu")],
+        )
+        spec = JobSpec(image="test:latest", command=["train"])
+        backend, new_spec = router.resolve_with_overrides("train", spec)
+        assert new_spec is spec  # Same object, no copy needed
+
+    def test_resolve_no_local_fallback(self):
+        mock = MockBackend("cloud")
+        router = ComputeRouter(backends={"cloud": mock}, routes=[])
+        assert router.resolve("anything").name == "cloud"
+
+    def test_resolve_with_overrides_fallback(self):
+        mock = MockBackend("cloud")
+        router = ComputeRouter(backends={"cloud": mock}, routes=[])
+        spec = JobSpec(image="test:latest", command=["train"])
+        backend, new_spec = router.resolve_with_overrides("unknown", spec)
+        assert backend.name == "cloud"
+        assert new_spec is spec
+
+    def test_add_route(self):
+        local = MockBackend("local")
+        router = ComputeRouter(backends={"local": local}, routes=[])
+        router.add_route(ComputeRoute(pattern="train", backend="local"))
+        assert len(router.routes) == 1
+        router.add_route(ComputeRoute(pattern="plan", backend="local"), index=0)
+        assert router.routes[0].pattern == "plan"
+
+
+# ── JobManager edge case tests ──────────────────────────────
+
+
+class TestJobManagerEdgeCases:
+    @pytest.mark.asyncio
+    async def test_cancel_job_not_found(self):
+        mock = MockBackend()
+        router = ComputeRouter(
+            backends={"mock": mock},
+            routes=[ComputeRoute(pattern="default", backend="mock")],
+        )
+        manager = JobManager(router)
+        result = await manager.cancel_job("nonexistent")
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_cancel_all_empty(self):
+        mock = MockBackend()
+        router = ComputeRouter(
+            backends={"mock": mock},
+            routes=[ComputeRoute(pattern="default", backend="mock")],
+        )
+        manager = JobManager(router)
+        count = await manager.cancel_all()
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_get_result_not_found(self):
+        mock = MockBackend()
+        router = ComputeRouter(
+            backends={"mock": mock},
+            routes=[ComputeRoute(pattern="default", backend="mock")],
+        )
+        manager = JobManager(router)
+        assert manager.get_result("nonexistent") is None
+
+    @pytest.mark.asyncio
+    async def test_router_property(self):
+        mock = MockBackend()
+        router = ComputeRouter(
+            backends={"mock": mock},
+            routes=[ComputeRoute(pattern="default", backend="mock")],
+        )
+        manager = JobManager(router)
+        assert manager.router is router
+
+
+# ── ArtifactStore edge cases ────────────────────────────────
+
+
+class TestLocalArtifactStoreEdgeCases:
+    @pytest.mark.asyncio
+    async def test_list_nonexistent_prefix(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = LocalArtifactStore(root=Path(d))
+            result = await store.list("nonexistent")
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_delete_directory(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = LocalArtifactStore(root=Path(d))
+            await store.put("dir/file1.txt", b"a")
+            await store.put("dir/file2.txt", b"b")
+            assert await store.delete("dir")
+            assert await store.list("dir") == []
+
+    @pytest.mark.asyncio
+    async def test_default_root(self):
+        store = LocalArtifactStore()
+        assert store._root == Path("./artifacts")

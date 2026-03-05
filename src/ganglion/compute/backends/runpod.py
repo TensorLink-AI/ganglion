@@ -121,7 +121,7 @@ class RunPodBackend:
             " } }"
         )
         data = await self._api_request(query)
-        pod = data.get("data", {}).get("pod", {})
+        pod = data.get("data", {}).get("pod") or {}
         status: str = pod.get("desiredStatus", "UNKNOWN")
         return status
 
