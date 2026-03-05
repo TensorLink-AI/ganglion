@@ -160,6 +160,11 @@ def main(argv: list[str] | None = None) -> None:
         default=8900,
         help="Port for SSE transport (default: 8900)",
     )
+    mcp_serve_parser.add_argument(
+        "--roles",
+        default=None,
+        help="Path to roles JSON file for multi-role MCP serving",
+    )
 
     args = parser.parse_args(argv)
 
@@ -354,17 +359,65 @@ def _run_mcp_serve(args: argparse.Namespace) -> None:
 
     async def _serve() -> None:
         await state.initialize_mcp()
+
+        # Register all framework operations as MCP tools
+        from ganglion.mcp.tools import register_framework_tools
+
+        register_framework_tools(state.tool_registry, state)
+
         try:
             from ganglion.mcp.server import MCPServerBridge
 
-            bridge = MCPServerBridge(
-                tool_registry=state.tool_registry,
-                server_name=f"ganglion-{state.subnet_config.name}",
-            )
-            if args.transport == "sse":
-                await bridge.run_sse(host="127.0.0.1", port=args.mcp_port)
+            roles_path = getattr(args, "roles", None)
+            if roles_path:
+                # Multi-role mode
+                from pathlib import Path
+
+                from ganglion.mcp.roles import MCPRolesConfig
+                from ganglion.mcp.usage import UsageTracker
+
+                roles_config = MCPRolesConfig.from_file(Path(roles_path))
+                errors = roles_config.validate()
+                if errors:
+                    logger.error("Roles config validation failed: %s", "; ".join(errors))
+                    sys.exit(1)
+
+                # Shared usage tracker
+                usage_db = state.project_root / ".ganglion" / "usage.db"
+                usage_tracker = UsageTracker(db_path=usage_db)
+
+                tasks = []
+                for role in roles_config.roles:
+                    bridge = MCPServerBridge(
+                        tool_registry=state.tool_registry,
+                        server_name=f"ganglion-{state.subnet_config.name}-{role.name}",
+                        categories=role.categories,
+                        token=role.token,
+                        role=role.name,
+                        usage_tracker=usage_tracker,
+                    )
+                    if role.transport == "sse":
+                        tasks.append(bridge.run_sse(host="127.0.0.1", port=role.port))
+                    else:
+                        tasks.append(bridge.run_stdio())
+
+                logger.info(
+                    "Starting %d MCP servers for roles: %s",
+                    len(tasks),
+                    ", ".join(r.name for r in roles_config.roles),
+                )
+                await asyncio.gather(*tasks)
             else:
-                await bridge.run_stdio()
+                # Single server mode (backward compatible)
+                bridge = MCPServerBridge(
+                    tool_registry=state.tool_registry,
+                    server_name=f"ganglion-{state.subnet_config.name}",
+                    role=getattr(args, "bot_id", None),
+                )
+                if args.transport == "sse":
+                    await bridge.run_sse(host="127.0.0.1", port=args.mcp_port)
+                else:
+                    await bridge.run_stdio()
         finally:
             await state.shutdown_mcp()
 
