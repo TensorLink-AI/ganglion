@@ -106,3 +106,7 @@ class BuildBackend(Protocol):
     async def push(self, tag: str) -> str:
         """Push a built image to a registry. Returns the full registry URI."""
         ...
+
+    async def build_and_push(self, dockerfile: str, tag: str) -> BuildResult:
+        """Validate, build, and push in one call."""
+        ...

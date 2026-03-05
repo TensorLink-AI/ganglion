@@ -126,6 +126,18 @@ def register_compute_tools(state: FrameworkState) -> None:
 
         return json.dumps(result)
 
+    async def validate_dockerfile(dockerfile: str) -> str:
+        """Validate a Dockerfile against the build backend's rules.
+
+        Returns validation result with any errors found.
+        Use before build_image to catch problems early.
+        """
+        if state.build_backend is None:
+            return json.dumps({"valid": True, "errors": []})
+
+        errors = await state.build_backend.validate(dockerfile)
+        return json.dumps({"valid": len(errors) == 0, "errors": errors})
+
     async def build_image(dockerfile: str, tag: str) -> str:
         """Build and push a container image from a Dockerfile.
 
@@ -203,6 +215,22 @@ def register_compute_tools(state: FrameworkState) -> None:
                     },
                 },
                 "required": ["base_image", "dependencies", "entrypoint", "tag"],
+            },
+        ),
+        (
+            "validate_dockerfile",
+            validate_dockerfile,
+            "Validate a Dockerfile against allowed base images and security rules. "
+            "Use before build_image to catch problems early.",
+            {
+                "type": "object",
+                "properties": {
+                    "dockerfile": {
+                        "type": "string",
+                        "description": "Full Dockerfile content to validate",
+                    },
+                },
+                "required": ["dockerfile"],
             },
         ),
         (
