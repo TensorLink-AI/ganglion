@@ -114,9 +114,7 @@ class BackendRegistry:
 
         entry = self._entries.get(name)
         if entry is None:
-            raise ValueError(
-                f"Unknown backend '{name}'. Known: {', '.join(self.available())}"
-            )
+            raise ValueError(f"Unknown backend '{name}'. Known: {', '.join(self.available())}")
 
         mod = self._import_module(entry.module, name)
         cls = getattr(mod, entry.class_name)
@@ -176,9 +174,7 @@ class BackendRegistry:
             return importlib.import_module(module_path)
         except ImportError as exc:
             install_hint = (
-                f"pip install ganglion[{backend_name}]"
-                if backend_name != "local"
-                else str(exc)
+                f"pip install ganglion[{backend_name}]" if backend_name != "local" else str(exc)
             )
             raise ImportError(
                 f"Cannot load backend '{backend_name}': missing dependency. "
