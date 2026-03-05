@@ -156,10 +156,8 @@ class MCPServerBridge:
                 return JSONResponse({"error": "Usage tracking not enabled"}, status_code=404)
             bot_id = request.query_params.get("bot_id")
             if bot_id:
-                data = self._usage_tracker.get_bot_stats(bot_id)
-            else:
-                data = self._usage_tracker.get_all_stats()
-            return JSONResponse(data)
+                return JSONResponse(self._usage_tracker.get_bot_stats(bot_id))
+            return JSONResponse(self._usage_tracker.get_all_stats())
 
         starlette_app = Starlette(
             routes=[
