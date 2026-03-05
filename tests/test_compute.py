@@ -16,6 +16,7 @@ from ganglion.compute.backends.docker_build import (
     _match_glob,
 )
 from ganglion.compute.backends.local import LocalBackend
+from ganglion.compute.backends.registry import BackendRegistry, get_backend_registry
 from ganglion.compute.backends.runpod import RunPodBackend, RunPodConfig
 from ganglion.compute.backends.ssh import SSHBackend, SSHConfig
 from ganglion.compute.job_manager import JobManager
@@ -1645,3 +1646,115 @@ class TestBuildMCPTools:
         data = json.loads(result)
         assert data["success"] is True
         assert data["image_ref"] == "ghcr.io/org/train:v1"
+
+
+# ── BackendRegistry tests ───────────────────────────────────
+
+
+class TestBackendRegistry:
+    def test_available_includes_builtins(self):
+        registry = BackendRegistry()
+        names = registry.available()
+        assert "local" in names
+        assert "runpod" in names
+        assert "ssh" in names
+
+    def test_check_local_ok(self):
+        registry = BackendRegistry()
+        ok, hint = registry.check("local")
+        assert ok is True
+        assert hint is None
+
+    def test_check_unknown(self):
+        registry = BackendRegistry()
+        ok, hint = registry.check("nonexistent")
+        assert ok is False
+        assert "Unknown backend" in hint
+
+    def test_create_local(self):
+        registry = BackendRegistry()
+        backend = registry.create("local", name="test-local")
+        assert backend.name == "test-local"
+        assert isinstance(backend, LocalBackend)
+
+    def test_create_unknown_raises(self):
+        registry = BackendRegistry()
+        with pytest.raises(ValueError, match="Unknown backend"):
+            registry.create("nonexistent")
+
+    def test_create_runpod_with_flat_kwargs(self):
+        registry = BackendRegistry()
+        backend = registry.create("runpod", api_key="test-key", name="my-runpod")
+        assert isinstance(backend, RunPodBackend)
+        assert backend.name == "my-runpod"
+
+    def test_create_ssh_with_flat_kwargs(self):
+        registry = BackendRegistry()
+        backend = registry.create("ssh", host="10.0.0.1", user="miner", name="my-ssh")
+        assert isinstance(backend, SSHBackend)
+        assert backend.name == "my-ssh"
+
+    def test_create_runpod_with_config_object(self):
+        registry = BackendRegistry()
+        cfg = RunPodConfig(api_key="test-key")
+        backend = registry.create("runpod", config=cfg)
+        assert isinstance(backend, RunPodBackend)
+
+    def test_register_and_create_custom(self):
+        registry = BackendRegistry()
+        registry.register("mock", MockBackend)
+        assert "mock" in registry.available()
+        backend = registry.create("mock", name="custom-mock")
+        assert backend.name == "custom-mock"
+
+    def test_register_check(self):
+        registry = BackendRegistry()
+        registry.register("mock", MockBackend)
+        ok, hint = registry.check("mock")
+        assert ok is True
+
+    def test_unregister(self):
+        registry = BackendRegistry()
+        registry.register("mock", MockBackend)
+        assert "mock" in registry.available()
+        registry.unregister("mock")
+        assert "mock" not in registry.available()
+
+    def test_unregister_nonexistent(self):
+        registry = BackendRegistry()
+        registry.unregister("nonexistent")  # should not raise
+
+    def test_runtime_registered_takes_priority(self):
+        registry = BackendRegistry()
+        registry.register("local", MockBackend)
+        backend = registry.create("local", name="overridden")
+        assert isinstance(backend, MockBackend)
+
+    def test_get_backend_registry_singleton(self):
+        r1 = get_backend_registry()
+        r2 = get_backend_registry()
+        assert r1 is r2
+
+    def test_check_missing_dep(self):
+        registry = BackendRegistry()
+        # Patch the entry to point to a nonexistent module
+        from ganglion.compute.backends.registry import _LazyBackendEntry
+
+        registry._entries["fake"] = _LazyBackendEntry(
+            module="nonexistent.module",
+            class_name="FakeBackend",
+        )
+        ok, hint = registry.check("fake")
+        assert ok is False
+        assert "pip install ganglion[fake]" in hint
+
+    def test_create_missing_dep_raises(self):
+        registry = BackendRegistry()
+        from ganglion.compute.backends.registry import _LazyBackendEntry
+
+        registry._entries["fake"] = _LazyBackendEntry(
+            module="nonexistent.module",
+            class_name="FakeBackend",
+        )
+        with pytest.raises(ImportError, match="missing dependency"):
+            registry.create("fake")
