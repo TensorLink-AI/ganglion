@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ganglion.knowledge.backends.base import KnowledgeBackend, PeerDiscovery
 from ganglion.knowledge.backends.json_backend import JsonKnowledgeBackend
-from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
+from ganglion.knowledge.types import AgentDesignPattern, Antipattern, KnowledgeQuery, Pattern
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,14 @@ class FederatedKnowledgeBackend:
 
     async def save_antipattern(self, antipattern: Antipattern) -> None:
         await self.local.save_antipattern(antipattern)
+
+    async def save_agent_design(self, design: AgentDesignPattern) -> None:
+        await self.local.save_agent_design(design)
+
+    async def query_agent_designs(self, query: KnowledgeQuery) -> list[AgentDesignPattern]:
+        # Agent designs query local only for now; peer discovery for designs
+        # can be added when PeerDiscovery protocol is extended.
+        return await self.local.query_agent_designs(query)
 
     async def query_patterns(self, query: KnowledgeQuery) -> list[Pattern]:
         local_results = await self.local.query_patterns(query)

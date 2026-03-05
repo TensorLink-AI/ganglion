@@ -101,3 +101,18 @@ class BaseAgentWrapper:
             "temperature": self.temperature,
             "model": self.model,
         }
+
+    def design_fingerprint(self) -> dict[str, Any]:
+        """Describe this agent's structural design.
+
+        Override to expose what makes this variant distinct.
+        Default uses describe() plus tool names from build_tools().
+        Subclasses can add prompt strategy, reasoning chain design, etc.
+        """
+        base = self.describe()
+        try:
+            tools_schema, _ = self.build_tools(task=None)
+            base["tools"] = [t["name"] for t in tools_schema if isinstance(t, dict)]
+        except Exception:
+            base["tools"] = []
+        return base

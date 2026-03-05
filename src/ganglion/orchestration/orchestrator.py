@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
 
+from ganglion.knowledge.types import AgentDesignPattern
 from ganglion.orchestration.errors import PipelineValidationError
 from ganglion.orchestration.events import (
     PipelineCompleted,
@@ -299,14 +300,39 @@ class PipelineOrchestrator:
             config = structured.get("config") if isinstance(structured, dict) else None
             if success:
                 metrics = task.subnet_config.metrics
+                metric_value = self._extract_metric(result, task)
+                metric_name = metrics[0].name if metrics else None
                 await self.knowledge.record_success(
                     capability=stage_def.name,
                     description=(result.raw_text or "")[:200],
                     config=config,
-                    metric_value=self._extract_metric(result, task),
-                    metric_name=metrics[0].name if metrics else None,
+                    metric_value=metric_value,
+                    metric_name=metric_name,
                     stage=stage_def.name,
                 )
+
+                # Record agent design pattern
+                agent_cls = self._resolve_agent(stage_def.agent)
+                if agent_cls is not None:
+                    try:
+                        agent_instance = agent_cls()
+                        fingerprint = agent_instance.design_fingerprint()
+                    except Exception:
+                        fingerprint = {"class": stage_def.agent}
+                    await self.knowledge.record_agent_design(
+                        AgentDesignPattern(
+                            capability=stage_def.name,
+                            agent_class=fingerprint.get("class", stage_def.agent),
+                            tools=fingerprint.get("tools", []),
+                            model=fingerprint.get("model"),
+                            metric_value=metric_value,
+                            metric_name=metric_name,
+                            fingerprint=fingerprint,
+                            stage=stage_def.name,
+                            source_bot=self.knowledge.bot_id
+                                if hasattr(self.knowledge, "bot_id") else None,
+                        )
+                    )
             else:
                 await self.knowledge.record_failure(
                     capability=stage_def.name,

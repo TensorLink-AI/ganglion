@@ -12,7 +12,7 @@ from ganglion.knowledge.backends.federated import (
 from ganglion.knowledge.backends.json_backend import JsonKnowledgeBackend
 from ganglion.knowledge.backends.sqlite_backend import SqliteKnowledgeBackend
 from ganglion.knowledge.store import KnowledgeStore
-from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
+from ganglion.knowledge.types import AgentDesignPattern, Antipattern, KnowledgeQuery, Pattern
 
 
 @pytest.fixture
@@ -640,3 +640,164 @@ class TestFederatedKnowledgeBackend:
         summaries = {r.error_summary for r in results}
         assert "Beta error" in summaries
         assert "Alpha error" not in summaries
+
+
+class TestAgentDesignPattern:
+    def test_to_dict_and_back(self):
+        d = AgentDesignPattern(
+            capability="forecast",
+            agent_class="ForecastAgentV2",
+            tools=["estimate_tail_risk", "score_paths"],
+            model="gpt-4",
+            metric_value=0.38,
+            metric_name="crps",
+            fingerprint={"class": "ForecastAgentV2", "temperature": 0.5},
+        )
+        data = d.to_dict()
+        d2 = AgentDesignPattern.from_dict(data)
+        assert d2.capability == "forecast"
+        assert d2.agent_class == "ForecastAgentV2"
+        assert d2.tools == ["estimate_tail_risk", "score_paths"]
+        assert d2.model == "gpt-4"
+        assert d2.metric_value == 0.38
+        assert d2.metric_name == "crps"
+        assert d2.fingerprint["temperature"] == 0.5
+
+    def test_defaults(self):
+        d = AgentDesignPattern(capability="train", agent_class="TrainAgent")
+        assert d.tools == []
+        assert d.model is None
+        assert d.fingerprint == {}
+        assert d.source_bot is None
+
+
+@pytest.mark.asyncio
+class TestAgentDesignJsonBackend:
+    async def test_save_and_query(self, json_backend):
+        design = AgentDesignPattern(
+            capability="forecast",
+            agent_class="ForecastAgentV2",
+            tools=["tool_a", "tool_b"],
+            metric_value=0.9,
+            metric_name="accuracy",
+        )
+        await json_backend.save_agent_design(design)
+
+        results = await json_backend.query_agent_designs(
+            KnowledgeQuery(capability="forecast")
+        )
+        assert len(results) == 1
+        assert results[0].agent_class == "ForecastAgentV2"
+        assert results[0].tools == ["tool_a", "tool_b"]
+
+    async def test_query_filters_capability(self, json_backend):
+        await json_backend.save_agent_design(
+            AgentDesignPattern(capability="forecast", agent_class="A")
+        )
+        await json_backend.save_agent_design(
+            AgentDesignPattern(capability="train", agent_class="B")
+        )
+
+        results = await json_backend.query_agent_designs(
+            KnowledgeQuery(capability="forecast")
+        )
+        assert len(results) == 1
+        assert results[0].agent_class == "A"
+
+    async def test_count_includes_designs(self, json_backend):
+        await json_backend.save_agent_design(
+            AgentDesignPattern(capability="a", agent_class="X")
+        )
+        counts = await json_backend.count()
+        assert counts["agent_designs"] == 1
+
+    async def test_exclude_source(self, json_backend):
+        await json_backend.save_agent_design(
+            AgentDesignPattern(capability="a", agent_class="X", source_bot="alpha")
+        )
+        await json_backend.save_agent_design(
+            AgentDesignPattern(capability="a", agent_class="Y", source_bot="beta")
+        )
+
+        results = await json_backend.query_agent_designs(
+            KnowledgeQuery(capability="a", exclude_source="alpha")
+        )
+        assert len(results) == 1
+        assert results[0].agent_class == "Y"
+
+
+@pytest.mark.asyncio
+class TestAgentDesignSqliteBackend:
+    async def test_save_and_query(self, tmp_dir):
+        backend = SqliteKnowledgeBackend(tmp_dir / "knowledge.db")
+        design = AgentDesignPattern(
+            capability="forecast",
+            agent_class="ForecastAgentV2",
+            tools=["tool_a", "tool_b"],
+            model="gpt-4",
+            metric_value=0.38,
+            metric_name="crps",
+            fingerprint={"class": "ForecastAgentV2"},
+        )
+        await backend.save_agent_design(design)
+
+        results = await backend.query_agent_designs(
+            KnowledgeQuery(capability="forecast")
+        )
+        assert len(results) == 1
+        assert results[0].agent_class == "ForecastAgentV2"
+        assert results[0].tools == ["tool_a", "tool_b"]
+        assert results[0].fingerprint == {"class": "ForecastAgentV2"}
+
+    async def test_count_includes_designs(self, tmp_dir):
+        backend = SqliteKnowledgeBackend(tmp_dir / "knowledge.db")
+        await backend.save_agent_design(
+            AgentDesignPattern(capability="a", agent_class="X")
+        )
+        counts = await backend.count()
+        assert counts["agent_designs"] == 1
+
+
+@pytest.mark.asyncio
+class TestAgentDesignKnowledgeStore:
+    async def test_record_agent_design(self, store):
+        design = AgentDesignPattern(
+            capability="forecast",
+            agent_class="ForecastAgentV2",
+            tools=["tool_a"],
+            metric_value=0.9,
+            metric_name="accuracy",
+        )
+        await store.record_agent_design(design)
+        assert (await store.summary())["agent_designs"] == 1
+
+    async def test_prompt_context_includes_designs(self, store):
+        await store.record_success(
+            capability="forecast",
+            description="Good approach",
+            metric_value=0.85,
+            metric_name="crps",
+        )
+        design = AgentDesignPattern(
+            capability="forecast",
+            agent_class="ForecastAgentV2",
+            tools=["estimate_tail_risk", "score_paths"],
+            metric_value=0.38,
+            metric_name="crps",
+        )
+        await store.record_agent_design(design)
+
+        ctx = await store.to_prompt_context("forecast")
+        assert "Agent Designs That Worked" in ctx
+        assert "ForecastAgentV2" in ctx
+        assert "estimate_tail_risk" in ctx
+        assert "score_paths" in ctx
+        assert "crps=0.38" in ctx
+
+    async def test_prompt_context_no_designs(self, store):
+        await store.record_success(
+            capability="train",
+            description="Some approach",
+        )
+        ctx = await store.to_prompt_context("train")
+        assert "Agent Designs" not in ctx
