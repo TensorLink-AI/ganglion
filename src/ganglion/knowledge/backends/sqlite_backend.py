@@ -283,7 +283,8 @@ class SqliteKnowledgeBackend:
     ) -> int | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT id FROM patterns WHERE capability = ? AND description = ? AND record_type = ? LIMIT 1",
+                "SELECT id FROM patterns"
+                " WHERE capability = ? AND description = ? AND record_type = ? LIMIT 1",
                 (capability, description, record_type),
             ).fetchone()
         return row[0] if row else None
@@ -293,7 +294,8 @@ class SqliteKnowledgeBackend:
     ) -> int | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT id FROM antipatterns WHERE capability = ? AND error_summary = ? AND record_type = ? LIMIT 1",
+                "SELECT id FROM antipatterns"
+                " WHERE capability = ? AND error_summary = ? AND record_type = ? LIMIT 1",
                 (capability, error_summary, record_type),
             ).fetchone()
         return row[0] if row else None
