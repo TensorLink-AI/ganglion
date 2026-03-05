@@ -557,6 +557,131 @@ async def reconnect_mcp_server(name: str) -> dict[str, Any]:
     return _success_response(state._describe_mcp())
 
 
+# ── Compute endpoints (v1) ─────────────────────────────────
+
+
+class ComputeSubmitRequest(BaseModel):
+    stage: str = Field(..., min_length=1, max_length=200)
+    image: str = Field(..., min_length=1, max_length=500)
+    command: list[str] = Field(..., min_length=1, max_length=50)
+    env: dict[str, str] = Field(default_factory=dict)
+    gpu_type: str | None = None
+    gpu_count: int = Field(default=0, ge=0, le=16)
+    timeout_seconds: int = Field(default=3600, gt=0, le=86400)
+
+
+class UpdateRoutesRequest(BaseModel):
+    routes: list[dict[str, Any]] = Field(..., min_length=1, max_length=100)
+
+
+@app.get("/v1/compute/backends")
+async def get_compute_backends() -> dict[str, Any]:
+    """List compute backends and their status."""
+    state = _get_state()
+    return _success_response(await state.compute_status())
+
+
+@app.get("/v1/compute/jobs")
+async def get_compute_jobs() -> dict[str, Any]:
+    """List active compute jobs."""
+    state = _get_state()
+    if state.job_manager is None:
+        return _success_response({"active_jobs": [], "cached_results": 0})
+    return _success_response(state.job_manager.status())
+
+
+@app.get("/v1/compute/jobs/{job_id}")
+async def get_compute_job(job_id: str) -> dict[str, Any]:
+    """Get details for a specific compute job."""
+    state = _get_state()
+    if state.job_manager is None:
+        _error_response("NO_COMPUTE", "Compute not configured", status_code=404)
+        return {}  # unreachable, satisfies type checker
+
+    # Check active jobs
+    for handle in state.job_manager.list_active():
+        if handle.job_id == job_id:
+            return _success_response({
+                "job_id": handle.job_id,
+                "backend": handle.backend_name,
+                "status": handle.status.value,
+            })
+
+    # Check cached results
+    result = state.job_manager.get_result(job_id)
+    if result:
+        return _success_response({
+            "job_id": result.job_id,
+            "status": result.status.value,
+            "exit_code": result.exit_code,
+            "duration_seconds": result.duration_seconds,
+            "cost_usd": result.cost_usd,
+            "metrics": result.metrics,
+        })
+
+    raise HTTPException(
+        status_code=404,
+        detail={"error": {"code": "NOT_FOUND", "message": f"Job '{job_id}' not found"}},
+    )
+
+
+@app.get("/v1/compute/routes")
+async def get_compute_routes() -> dict[str, Any]:
+    """Current stage-to-backend routing table."""
+    state = _get_state()
+    if state.compute_router is None:
+        return _success_response({"backends": [], "routes": []})
+    return _success_response(state.compute_router.to_dict())
+
+
+@app.post("/v1/compute/jobs/{job_id}/cancel")
+async def cancel_compute_job(job_id: str) -> dict[str, Any]:
+    """Cancel a running compute job."""
+    state = _get_state()
+    if state.job_manager is None:
+        _error_response("NO_COMPUTE", "Compute not configured", status_code=404)
+        return {}
+    cancelled = await state.job_manager.cancel_job(job_id)
+    if not cancelled:
+        _error_response("NOT_FOUND", f"Active job '{job_id}' not found", status_code=404)
+    return _success_response({"job_id": job_id, "status": "cancelled"})
+
+
+@app.put("/v1/compute/routes")
+async def update_compute_routes(body: UpdateRoutesRequest) -> dict[str, Any]:
+    """Update the compute routing table."""
+    from ganglion.compute.router import ComputeRoute
+
+    state = _get_state()
+    if state.compute_router is None:
+        _error_response("NO_COMPUTE", "Compute not configured", status_code=404)
+        return {}
+
+    routes = []
+    for r in body.routes:
+        pattern = r.get("pattern")
+        backend = r.get("backend")
+        if not pattern or not backend:
+            _error_response("INVALID_ROUTE", "Each route needs 'pattern' and 'backend'")
+        routes.append(ComputeRoute(
+            pattern=pattern,
+            backend=backend,
+            overrides=r.get("overrides", {}),
+        ))
+    state.compute_router.set_routes(routes)
+    return _success_response(state.compute_router.to_dict())
+
+
+@app.delete("/v1/compute/backends/{name}")
+async def remove_compute_backend(name: str) -> dict[str, Any]:
+    """Remove a compute backend."""
+    state = _get_state()
+    result = await state.remove_backend(name)
+    if not result.success:
+        _error_response("BACKEND_ERROR", "; ".join(result.errors))
+    return _success_response(await state.compute_status())
+
+
 # ── Backward compatibility (unversioned routes) ───────────
 # These mirror v1 routes for backward compatibility during migration.
 

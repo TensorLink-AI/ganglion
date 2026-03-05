@@ -8,6 +8,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ganglion.compute.job_manager import JobManager
+from ganglion.compute.protocol import ComputeBackend
+from ganglion.compute.router import ComputeRouter
 from ganglion.knowledge.store import KnowledgeStore
 from ganglion.orchestration.errors import (
     ConcurrentMutationError,
@@ -48,6 +51,7 @@ class FrameworkState:
         knowledge: KnowledgeStore | None = None,
         validator: MutationValidator | None = None,
         mcp_configs: list[Any] | None = None,
+        compute_router: ComputeRouter | None = None,
     ):
         self.subnet_config = subnet_config
         self.pipeline_def = pipeline_def
@@ -57,6 +61,10 @@ class FrameworkState:
         self.project_root = project_root or Path(".")
         self.knowledge = knowledge
         self.validator = validator or MutationValidator()
+
+        # Compute
+        self.compute_router = compute_router
+        self._job_manager = JobManager(compute_router) if compute_router else None
 
         # MCP client bridges (name -> bridge)
         self._mcp_configs: list[Any] = mcp_configs or []
@@ -136,6 +144,7 @@ class FrameworkState:
         persistence = getattr(config_module, "persistence", None)
         knowledge = getattr(config_module, "knowledge", None)
         mcp_clients = getattr(config_module, "mcp_clients", None)
+        compute_router = getattr(config_module, "compute_router", None)
 
         # Set bot_id on knowledge store for multi-bot shared knowledge
         if knowledge is not None and bot_id is not None:
@@ -184,13 +193,14 @@ class FrameworkState:
             project_root=project_root,
             knowledge=knowledge,
             mcp_configs=mcp_clients,
+            compute_router=compute_router,
         )
 
     # ── Observation methods ─────────────────────────────────
 
     async def describe(self) -> dict[str, Any]:
         """Full snapshot of current state for observation tools."""
-        return {
+        desc: dict[str, Any] = {
             "subnet": self.subnet_config.to_dict(),
             "pipeline": self.pipeline_def.to_dict(),
             "tools": self.tool_registry.list_all(),
@@ -200,6 +210,26 @@ class FrameworkState:
             "mutations": len(self.mutations),
             "running": self._is_running,
         }
+        if self.compute_router:
+            desc["compute"] = self._describe_compute()
+        return desc
+
+    def _describe_compute(self) -> dict[str, Any]:
+        """Compute subsystem snapshot — names and routes only, never credentials."""
+        if not self.compute_router:
+            return {}
+        result: dict[str, Any] = {
+            "backends": [
+                {"name": b.name} for b in self.compute_router.backends.values()
+            ],
+            "routes": [
+                {"pattern": r.pattern, "backend": r.backend}
+                for r in self.compute_router.routes
+            ],
+        }
+        if self._job_manager:
+            result["active_jobs"] = len(self._job_manager.list_active())
+        return result
 
     def _describe_mcp(self) -> dict[str, Any]:
         """MCP connection status snapshot."""
@@ -429,6 +459,73 @@ class FrameworkState:
             )
 
             return MutationResult(success=True, path=str(path))
+
+    # ── Compute methods ──────────────────────────────────────
+
+    @property
+    def job_manager(self) -> JobManager | None:
+        return self._job_manager
+
+    async def hot_add_backend(
+        self, name: str, backend: ComputeBackend
+    ) -> MutationResult:
+        """Add a compute backend at runtime."""
+        async with self._mutation_lock:
+            self._check_not_running("Cannot add backends during a run")
+
+            if self.compute_router is None:
+                return MutationResult(
+                    success=False,
+                    errors=["No compute_router configured"],
+                )
+
+            self.compute_router.add_backend(name, backend)
+
+            if self._job_manager is None:
+                self._job_manager = JobManager(self.compute_router)
+
+            self.mutations.append(
+                Mutation(
+                    mutation_type="add_compute_backend",
+                    target=name,
+                    description=f"Added compute backend '{name}'",
+                )
+            )
+            return MutationResult(success=True)
+
+    async def remove_backend(self, name: str) -> MutationResult:
+        """Remove a compute backend at runtime."""
+        async with self._mutation_lock:
+            self._check_not_running("Cannot remove backends during a run")
+
+            if self.compute_router is None:
+                return MutationResult(
+                    success=False,
+                    errors=["No compute_router configured"],
+                )
+
+            removed = self.compute_router.remove_backend(name)
+            if removed is None:
+                return MutationResult(
+                    success=False,
+                    errors=[f"Backend '{name}' not found"],
+                )
+
+            self.mutations.append(
+                Mutation(
+                    mutation_type="remove_compute_backend",
+                    target=name,
+                    description=f"Removed compute backend '{name}'",
+                )
+            )
+            return MutationResult(success=True)
+
+    async def compute_status(self) -> dict[str, Any]:
+        """Return compute subsystem status for observation endpoints."""
+        result = self._describe_compute()
+        if self._job_manager:
+            result["jobs"] = self._job_manager.status()
+        return result
 
     # ── MCP methods ─────────────────────────────────────────
 
