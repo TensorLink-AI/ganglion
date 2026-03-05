@@ -117,6 +117,23 @@ pipeline = PipelineDef(
 #         tool_prefix="example",
 #     ),
 # ]
+
+# Docker prefabs (optional)
+# Pre-built container templates for compute stages. Pass to SubnetConfig
+# via docker_prefabs={{...}}. Stages reference prefabs by name; the prefab
+# seeds a JobSpec with the command supplied at call time.
+#
+# from ganglion.compute.protocol import DockerPrefab
+#
+# docker_prefabs = {{
+#     "train": DockerPrefab(
+#         name="train",
+#         image="my-registry/trainer:latest",
+#         gpu_type="A100",
+#         gpu_count=1,
+#         memory_gb=32,
+#     ),
+# }}
 '''
 
     def render_starter_agent(self) -> str:

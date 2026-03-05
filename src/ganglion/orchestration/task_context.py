@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
+from ganglion.compute.protocol import DockerPrefab
+
 _SENTINEL = object()
 
 
@@ -54,6 +56,7 @@ class SubnetConfig:
     tasks: dict[str, TaskDef]
     output_spec: OutputSpec
     constraints: dict[str, Any] = field(default_factory=dict)
+    docker_prefabs: dict[str, DockerPrefab] = field(default_factory=dict)
 
     def to_prompt_section(self) -> str:
         """Format the config as a prompt section for agent consumption."""
@@ -108,6 +111,20 @@ class SubnetConfig:
                 "description": self.output_spec.description,
             },
             "constraints": self.constraints,
+            "docker_prefabs": {
+                name: {
+                    "name": p.name,
+                    "image": p.image,
+                    "env": p.env,
+                    "gpu_type": p.gpu_type,
+                    "gpu_count": p.gpu_count,
+                    "cpu_cores": p.cpu_cores,
+                    "memory_gb": p.memory_gb,
+                    "timeout_seconds": p.timeout_seconds,
+                    "artifacts_dir": p.artifacts_dir,
+                }
+                for name, p in self.docker_prefabs.items()
+            },
         }
 
 

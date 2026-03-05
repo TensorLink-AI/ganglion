@@ -2,6 +2,7 @@
 
 import pytest
 
+from ganglion.compute.protocol import DockerPrefab
 from ganglion.orchestration.errors import (
     AgentError,
     EnvironmentError,
@@ -47,6 +48,47 @@ class TestSubnetConfig:
         assert d["netuid"] == 99
         assert d["name"] == "Test Subnet"
         assert len(d["metrics"]) == 1
+        assert d["docker_prefabs"] == {}
+
+    def test_to_dict_with_docker_prefabs(self):
+        config = SubnetConfig(
+            netuid=50,
+            name="Prefab Test",
+            metrics=[MetricDef("score", "maximize")],
+            tasks={"main": TaskDef("main")},
+            output_spec=OutputSpec(format="model"),
+            docker_prefabs={
+                "train": DockerPrefab(
+                    name="train",
+                    image="registry/train:v1",
+                    gpu_type="A100",
+                    gpu_count=1,
+                    memory_gb=32,
+                ),
+            },
+        )
+        d = config.to_dict()
+        assert "train" in d["docker_prefabs"]
+        p = d["docker_prefabs"]["train"]
+        assert p["image"] == "registry/train:v1"
+        assert p["gpu_type"] == "A100"
+        assert p["gpu_count"] == 1
+        assert p["memory_gb"] == 32
+
+    def test_docker_prefabs_not_in_prompt(self):
+        config = SubnetConfig(
+            netuid=50,
+            name="Prefab Test",
+            metrics=[MetricDef("score", "maximize")],
+            tasks={"main": TaskDef("main")},
+            output_spec=OutputSpec(format="model"),
+            docker_prefabs={
+                "train": DockerPrefab(name="train", image="registry/train:v1"),
+            },
+        )
+        section = config.to_prompt_section()
+        assert "registry/train" not in section
+        assert "DockerPrefab" not in section
 
     def test_metric_is_better(self):
         maximize = MetricDef("acc", "maximize")

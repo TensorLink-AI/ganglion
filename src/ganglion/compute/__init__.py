@@ -4,6 +4,7 @@ from ganglion.compute.artifacts import ArtifactStore, LocalArtifactStore
 from ganglion.compute.job_manager import JobManager
 from ganglion.compute.protocol import (
     ComputeBackend,
+    DockerPrefab,
     JobHandle,
     JobResult,
     JobSpec,
@@ -16,6 +17,7 @@ __all__ = [
     "ComputeBackend",
     "ComputeRoute",
     "ComputeRouter",
+    "DockerPrefab",
     "JobHandle",
     "JobManager",
     "JobResult",
