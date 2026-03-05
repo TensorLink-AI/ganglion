@@ -53,11 +53,7 @@ class LocalArtifactStore:
         search_dir = self._root / prefix if prefix else self._root
         if not search_dir.is_dir():
             return []
-        return [
-            str(p.relative_to(self._root))
-            for p in search_dir.rglob("*")
-            if p.is_file()
-        ]
+        return [str(p.relative_to(self._root)) for p in search_dir.rglob("*") if p.is_file()]
 
     async def delete(self, key: str) -> bool:
         path = self._root / key

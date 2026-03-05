@@ -405,9 +405,7 @@ class TestJobManager:
         manager = JobManager(router)
 
         spec = JobSpec(image="test:latest", command=["train"])
-        result = await manager.submit_and_wait(
-            "train", spec, early_stop=lambda h: True
-        )
+        result = await manager.submit_and_wait("train", spec, early_stop=lambda h: True)
         assert result.status == JobStatus.CANCELLED
 
 

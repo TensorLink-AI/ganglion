@@ -601,23 +601,27 @@ async def get_compute_job(job_id: str) -> dict[str, Any]:
     # Check active jobs
     for handle in state.job_manager.list_active():
         if handle.job_id == job_id:
-            return _success_response({
-                "job_id": handle.job_id,
-                "backend": handle.backend_name,
-                "status": handle.status.value,
-            })
+            return _success_response(
+                {
+                    "job_id": handle.job_id,
+                    "backend": handle.backend_name,
+                    "status": handle.status.value,
+                }
+            )
 
     # Check cached results
     result = state.job_manager.get_result(job_id)
     if result:
-        return _success_response({
-            "job_id": result.job_id,
-            "status": result.status.value,
-            "exit_code": result.exit_code,
-            "duration_seconds": result.duration_seconds,
-            "cost_usd": result.cost_usd,
-            "metrics": result.metrics,
-        })
+        return _success_response(
+            {
+                "job_id": result.job_id,
+                "status": result.status.value,
+                "exit_code": result.exit_code,
+                "duration_seconds": result.duration_seconds,
+                "cost_usd": result.cost_usd,
+                "metrics": result.metrics,
+            }
+        )
 
     raise HTTPException(
         status_code=404,
@@ -663,11 +667,13 @@ async def update_compute_routes(body: UpdateRoutesRequest) -> dict[str, Any]:
         backend = r.get("backend")
         if not pattern or not backend:
             _error_response("INVALID_ROUTE", "Each route needs 'pattern' and 'backend'")
-        routes.append(ComputeRoute(
-            pattern=pattern,
-            backend=backend,
-            overrides=r.get("overrides", {}),
-        ))
+        routes.append(
+            ComputeRoute(
+                pattern=pattern,
+                backend=backend,
+                overrides=r.get("overrides", {}),
+            )
+        )
     state.compute_router.set_routes(routes)
     return _success_response(state.compute_router.to_dict())
 

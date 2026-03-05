@@ -87,9 +87,7 @@ class SSHBackend:
         cmd = " ".join(spec.command)
         env_str = " ".join(f"{k}={v}" for k, v in spec.env.items())
         launch = (
-            f"cd {remote_dir} && "
-            f"{env_str} nohup {cmd} "
-            f"> stdout.log 2> stderr.log & echo $! > pid"
+            f"cd {remote_dir} && {env_str} nohup {cmd} > stdout.log 2> stderr.log & echo $! > pid"
         )
         await conn.run(launch, check=False)
 

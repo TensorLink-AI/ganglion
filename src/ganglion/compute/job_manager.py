@@ -51,9 +51,7 @@ class JobManager:
         elapsed = 0.0
 
         try:
-            while handle.status in (
-                JobStatus.PENDING, JobStatus.PROVISIONING, JobStatus.RUNNING
-            ):
+            while handle.status in (JobStatus.PENDING, JobStatus.PROVISIONING, JobStatus.RUNNING):
                 await asyncio.sleep(interval)
                 elapsed += interval
 

@@ -120,9 +120,7 @@ class ComputeRouter:
     def to_dict(self) -> dict[str, Any]:
         """Serialize for observation endpoints."""
         return {
-            "backends": [
-                {"name": b.name} for b in self._backends.values()
-            ],
+            "backends": [{"name": b.name} for b in self._backends.values()],
             "routes": [
                 {"pattern": r.pattern, "backend": r.backend, "overrides": r.overrides}
                 for r in self._routes

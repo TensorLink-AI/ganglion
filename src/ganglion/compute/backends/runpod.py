@@ -63,8 +63,8 @@ class RunPodBackend:
             f' name: "{c["name"]}",'
             f' imageName: "{c["imageName"]}",'
             f' gpuTypeId: "{c["gpuTypeId"]}",'
-            f' gpuCount: {c["gpuCount"]},'
-            f' containerDiskInGb: {c["containerDiskInGb"]},'
+            f" gpuCount: {c['gpuCount']},"
+            f" containerDiskInGb: {c['containerDiskInGb']},"
             f' dockerArgs: "{c["dockerArgs"]}",'
             f' cloudType: "{c["cloudType"]}"'
             " }) { id desiredStatus imageName machine { gpuDisplayName } }"

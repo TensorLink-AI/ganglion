@@ -219,12 +219,9 @@ class FrameworkState:
         if not self.compute_router:
             return {}
         result: dict[str, Any] = {
-            "backends": [
-                {"name": b.name} for b in self.compute_router.backends.values()
-            ],
+            "backends": [{"name": b.name} for b in self.compute_router.backends.values()],
             "routes": [
-                {"pattern": r.pattern, "backend": r.backend}
-                for r in self.compute_router.routes
+                {"pattern": r.pattern, "backend": r.backend} for r in self.compute_router.routes
             ],
         }
         if self._job_manager:
@@ -466,9 +463,7 @@ class FrameworkState:
     def job_manager(self) -> JobManager | None:
         return self._job_manager
 
-    async def hot_add_backend(
-        self, name: str, backend: ComputeBackend
-    ) -> MutationResult:
+    async def hot_add_backend(self, name: str, backend: ComputeBackend) -> MutationResult:
         """Add a compute backend at runtime."""
         async with self._mutation_lock:
             self._check_not_running("Cannot add backends during a run")

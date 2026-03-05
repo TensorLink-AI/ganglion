@@ -34,21 +34,25 @@ def register_compute_tools(state: FrameworkState) -> None:
 
         for handle in state.job_manager.list_active():
             if handle.job_id == job_id:
-                return json.dumps({
-                    "job_id": handle.job_id,
-                    "backend": handle.backend_name,
-                    "status": handle.status.value,
-                })
+                return json.dumps(
+                    {
+                        "job_id": handle.job_id,
+                        "backend": handle.backend_name,
+                        "status": handle.status.value,
+                    }
+                )
 
         result = state.job_manager.get_result(job_id)
         if result:
-            return json.dumps({
-                "job_id": result.job_id,
-                "status": result.status.value,
-                "exit_code": result.exit_code,
-                "duration_seconds": result.duration_seconds,
-                "metrics": result.metrics,
-            })
+            return json.dumps(
+                {
+                    "job_id": result.job_id,
+                    "status": result.status.value,
+                    "exit_code": result.exit_code,
+                    "duration_seconds": result.duration_seconds,
+                    "metrics": result.metrics,
+                }
+            )
         return json.dumps({"error": f"Job '{job_id}' not found"})
 
     async def compute_routes() -> str:
