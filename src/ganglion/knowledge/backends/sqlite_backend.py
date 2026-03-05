@@ -8,7 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
+from ganglion.knowledge.types import AgentDesignPattern, Antipattern, KnowledgeQuery, Pattern
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,33 @@ class SqliteKnowledgeBackend:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_antipatterns_timestamp ON antipatterns(timestamp)"
             )
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS agent_designs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    capability TEXT NOT NULL,
+                    agent_class TEXT NOT NULL,
+                    tools TEXT,
+                    model TEXT,
+                    metric_value REAL,
+                    metric_name TEXT,
+                    fingerprint TEXT,
+                    stage TEXT,
+                    timestamp TEXT NOT NULL,
+                    run_id TEXT,
+                    source_bot TEXT
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS "
+                "idx_agent_designs_capability ON agent_designs(capability)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS "
+                "idx_agent_designs_source_bot ON agent_designs(source_bot)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_designs_timestamp ON agent_designs(timestamp)"
+            )
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(str(self.db_path))
@@ -108,6 +135,55 @@ class SqliteKnowledgeBackend:
                     antipattern.source_bot,
                 ),
             )
+
+    async def save_agent_design(self, design: AgentDesignPattern) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO agent_designs
+                   (capability, agent_class, tools, model, metric_value,
+                    metric_name, fingerprint, stage, timestamp, run_id, source_bot)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    design.capability,
+                    design.agent_class,
+                    json.dumps(design.tools),
+                    design.model,
+                    design.metric_value,
+                    design.metric_name,
+                    json.dumps(design.fingerprint),
+                    design.stage,
+                    design.timestamp.isoformat(),
+                    design.run_id,
+                    design.source_bot,
+                ),
+            )
+
+    async def query_agent_designs(self, query: KnowledgeQuery) -> list[AgentDesignPattern]:
+        conditions = []
+        params: list[Any] = []
+
+        if query.capability:
+            conditions.append("capability = ?")
+            params.append(query.capability)
+        if query.since:
+            conditions.append("timestamp >= ?")
+            params.append(query.since.isoformat())
+        if query.min_metric is not None:
+            conditions.append("metric_value >= ?")
+            params.append(query.min_metric)
+        if query.exclude_source is not None:
+            conditions.append("(source_bot IS NULL OR source_bot != ?)")
+            params.append(query.exclude_source)
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        sql = f"SELECT * FROM agent_designs {where} ORDER BY timestamp DESC LIMIT ?"
+        params.append(query.max_entries)
+
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(sql, params).fetchall()
+
+        return [self._row_to_agent_design(row) for row in rows]
 
     async def query_patterns(self, query: KnowledgeQuery) -> list[Pattern]:
         conditions = []
@@ -164,7 +240,8 @@ class SqliteKnowledgeBackend:
         with self._connect() as conn:
             patterns = conn.execute("SELECT COUNT(*) FROM patterns").fetchone()[0]
             antipatterns = conn.execute("SELECT COUNT(*) FROM antipatterns").fetchone()[0]
-        return {"patterns": patterns, "antipatterns": antipatterns}
+            agent_designs = conn.execute("SELECT COUNT(*) FROM agent_designs").fetchone()[0]
+        return {"patterns": patterns, "antipatterns": antipatterns, "agent_designs": agent_designs}
 
     async def trim(self, max_patterns: int = 500, max_antipatterns: int = 500) -> None:
         with self._connect() as conn:
@@ -209,6 +286,23 @@ class SqliteKnowledgeBackend:
             error_summary=row["error_summary"],
             config=config,
             failure_mode=row["failure_mode"],
+            stage=row["stage"],
+            timestamp=datetime.fromisoformat(row["timestamp"]),
+            run_id=row["run_id"],
+            source_bot=row["source_bot"],
+        )
+
+    def _row_to_agent_design(self, row: sqlite3.Row) -> AgentDesignPattern:
+        from datetime import datetime
+
+        return AgentDesignPattern(
+            capability=row["capability"],
+            agent_class=row["agent_class"],
+            tools=json.loads(row["tools"]) if row["tools"] else [],
+            model=row["model"],
+            metric_value=row["metric_value"],
+            metric_name=row["metric_name"],
+            fingerprint=json.loads(row["fingerprint"]) if row["fingerprint"] else {},
             stage=row["stage"],
             timestamp=datetime.fromisoformat(row["timestamp"]),
             run_id=row["run_id"],

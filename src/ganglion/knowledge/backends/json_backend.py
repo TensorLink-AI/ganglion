@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
+from ganglion.knowledge.types import AgentDesignPattern, Antipattern, KnowledgeQuery, Pattern
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,7 @@ class JsonKnowledgeBackend:
         self.directory.mkdir(parents=True, exist_ok=True)
         self._patterns_path = self.directory / "patterns.json"
         self._antipatterns_path = self.directory / "antipatterns.json"
+        self._agent_designs_path = self.directory / "agent_designs.json"
 
     def _load_patterns(self) -> list[dict[str, Any]]:
         if self._patterns_path.exists():
@@ -45,6 +46,18 @@ class JsonKnowledgeBackend:
     def _save_antipatterns(self, data: list[dict[str, Any]]) -> None:
         self._antipatterns_path.write_text(json.dumps(data, indent=2, default=str))
 
+    def _load_agent_designs(self) -> list[dict[str, Any]]:
+        if self._agent_designs_path.exists():
+            try:
+                result: list[dict[str, Any]] = json.loads(self._agent_designs_path.read_text())
+                return result
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning("Failed to load agent designs: %s", e)
+        return []
+
+    def _save_agent_designs(self, data: list[dict[str, Any]]) -> None:
+        self._agent_designs_path.write_text(json.dumps(data, indent=2, default=str))
+
     async def save_pattern(self, pattern: Pattern) -> None:
         data = self._load_patterns()
         data.append(pattern.to_dict())
@@ -54,6 +67,31 @@ class JsonKnowledgeBackend:
         data = self._load_antipatterns()
         data.append(antipattern.to_dict())
         self._save_antipatterns(data)
+
+    async def save_agent_design(self, design: AgentDesignPattern) -> None:
+        data = self._load_agent_designs()
+        data.append(design.to_dict())
+        self._save_agent_designs(data)
+
+    async def query_agent_designs(self, query: KnowledgeQuery) -> list[AgentDesignPattern]:
+        data = self._load_agent_designs()
+        designs = [AgentDesignPattern.from_dict(d) for d in data]
+
+        if query.capability:
+            designs = [d for d in designs if d.capability == query.capability]
+        if query.since:
+            designs = [d for d in designs if d.timestamp >= query.since]
+        if query.min_metric is not None:
+            designs = [
+                d
+                for d in designs
+                if d.metric_value is not None and d.metric_value >= query.min_metric
+            ]
+        if query.exclude_source is not None:
+            designs = [d for d in designs if d.source_bot != query.exclude_source]
+
+        designs.sort(key=lambda d: d.timestamp, reverse=True)
+        return designs[: query.max_entries]
 
     async def query_patterns(self, query: KnowledgeQuery) -> list[Pattern]:
         data = self._load_patterns()
@@ -94,6 +132,7 @@ class JsonKnowledgeBackend:
         return {
             "patterns": len(self._load_patterns()),
             "antipatterns": len(self._load_antipatterns()),
+            "agent_designs": len(self._load_agent_designs()),
         }
 
     async def trim(self, max_patterns: int = 500, max_antipatterns: int = 500) -> None:

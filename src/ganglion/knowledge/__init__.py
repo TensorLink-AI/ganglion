@@ -4,12 +4,13 @@ from ganglion.knowledge.backends.federated import (
     FilesystemPeerDiscovery,
 )
 from ganglion.knowledge.store import KnowledgeStore
-from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
+from ganglion.knowledge.types import AgentDesignPattern, Antipattern, KnowledgeQuery, Pattern
 
 __all__ = [
     "KnowledgeStore",
     "Pattern",
     "Antipattern",
+    "AgentDesignPattern",
     "KnowledgeQuery",
     "KnowledgeBackend",
     "PeerDiscovery",

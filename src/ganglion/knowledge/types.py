@@ -99,6 +99,59 @@ class Antipattern:
 
 
 @dataclass
+class AgentDesignPattern:
+    """Records what an agent looked like when it achieved an outcome."""
+
+    capability: str
+    agent_class: str
+    tools: list[str] = field(default_factory=list)
+    model: str | None = None
+    metric_value: float | None = None
+    metric_name: str | None = None
+    fingerprint: dict[str, Any] = field(default_factory=dict)
+    stage: str | None = None
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+    run_id: str | None = None
+    source_bot: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "capability": self.capability,
+            "agent_class": self.agent_class,
+            "tools": self.tools,
+            "model": self.model,
+            "metric_value": self.metric_value,
+            "metric_name": self.metric_name,
+            "fingerprint": self.fingerprint,
+            "stage": self.stage,
+            "timestamp": self.timestamp.isoformat(),
+            "run_id": self.run_id,
+            "source_bot": self.source_bot,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AgentDesignPattern:
+        parsed_timestamp = data.get("timestamp")
+        if isinstance(parsed_timestamp, str):
+            parsed_timestamp = datetime.fromisoformat(parsed_timestamp)
+        elif parsed_timestamp is None:
+            parsed_timestamp = datetime.utcnow()
+        return cls(
+            capability=data["capability"],
+            agent_class=data["agent_class"],
+            tools=data.get("tools", []),
+            model=data.get("model"),
+            metric_value=data.get("metric_value"),
+            metric_name=data.get("metric_name"),
+            fingerprint=data.get("fingerprint", {}),
+            stage=data.get("stage"),
+            timestamp=parsed_timestamp,
+            run_id=data.get("run_id"),
+            source_bot=data.get("source_bot"),
+        )
+
+
+@dataclass
 class KnowledgeQuery:
     """Filter for retrieving relevant knowledge."""
 

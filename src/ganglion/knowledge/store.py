@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ganglion.knowledge.backends.base import KnowledgeBackend
-from ganglion.knowledge.types import Antipattern, KnowledgeQuery, Pattern
+from ganglion.knowledge.types import AgentDesignPattern, Antipattern, KnowledgeQuery, Pattern
 
 
 class KnowledgeStore:
@@ -79,6 +79,10 @@ class KnowledgeStore:
             )
         )
 
+    async def record_agent_design(self, design: AgentDesignPattern) -> None:
+        """Record what agent structure produced this outcome."""
+        await self.backend.save_agent_design(design)
+
     async def to_prompt_context(
         self,
         capability: str,
@@ -117,6 +121,18 @@ class KnowledgeStore:
                 lines.append(f"- {a.error_summary}")
                 if a.failure_mode:
                     lines.append(f"  Failure mode: {a.failure_mode}")
+
+        designs = await self.backend.query_agent_designs(
+            KnowledgeQuery(capability=capability, max_entries=5)
+        )
+        if designs:
+            lines.append("\n### Agent Designs That Worked")
+            for d in designs:
+                metric_str = (
+                    f" ({d.metric_name}={d.metric_value})" if d.metric_value is not None else ""
+                )
+                tools_str = ", ".join(d.tools) if d.tools else "none"
+                lines.append(f"- {d.agent_class} with tools [{tools_str}]{metric_str}")
 
         return "\n".join(lines)
 
@@ -171,6 +187,7 @@ class KnowledgeStore:
         return {
             "patterns": counts.get("patterns", 0),
             "antipatterns": counts.get("antipatterns", 0),
+            "agent_designs": counts.get("agent_designs", 0),
         }
 
     async def trim(self) -> None:

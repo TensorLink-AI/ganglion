@@ -19,7 +19,7 @@ from ganglion.orchestration.orchestrator import (
     PipelineResult,
     StageResult,
 )
-from ganglion.orchestration.pipeline import PipelineDef
+from ganglion.orchestration.pipeline import PipelineDef, StageDef
 from ganglion.orchestration.task_context import SubnetConfig, TaskContext
 from ganglion.state.agent_registry import AgentRegistry
 from ganglion.state.mutation import Mutation, MutationResult
@@ -317,9 +317,9 @@ class FrameworkState:
 
             errors = new_pipeline.validate()
 
-            # Check that referenced agents exist
+            # Check that referenced agents exist (only for agent stages)
             for stage in new_pipeline.stages:
-                if not self.agent_registry.has(stage.agent):
+                if isinstance(stage, StageDef) and not self.agent_registry.has(stage.agent):
                     errors.append(
                         f"Stage '{stage.name}' references unregistered agent '{stage.agent}'"
                     )
@@ -679,8 +679,6 @@ class FrameworkState:
 
             elif mutation.mutation_type == "patch_pipeline":
                 previous = mutation.rollback_data["previous"]
-                from ganglion.orchestration.pipeline import StageDef
-
                 self.pipeline_def = PipelineDef(
                     name=previous["name"],
                     stages=[
