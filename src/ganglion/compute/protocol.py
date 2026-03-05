@@ -108,3 +108,40 @@ class ComputeBackend(Protocol):
     async def collect(self, handle: JobHandle) -> JobResult: ...
 
     async def cleanup(self, handle: JobHandle) -> None: ...
+
+
+@dataclass
+class BuildResult:
+    """What comes back when an image build completes."""
+
+    image_ref: str
+    success: bool
+    error: str = ""
+    duration_seconds: float = 0.0
+
+
+class BuildBackend(Protocol):
+    """The interface image builders must implement.
+
+    Parallel to ComputeBackend: the bot declares what it needs (a Dockerfile),
+    infrastructure decides whether it's permitted and handles credentials.
+    """
+
+    @property
+    def name(self) -> str: ...
+
+    async def validate(self, dockerfile: str) -> list[str]:
+        """Lint the Dockerfile. Return a list of errors (empty = valid)."""
+        ...
+
+    async def build(self, dockerfile: str, tag: str) -> BuildResult:
+        """Build an image from a Dockerfile string. Returns the image ref."""
+        ...
+
+    async def push(self, tag: str) -> str:
+        """Push a built image to a registry. Returns the full registry URI."""
+        ...
+
+    async def build_and_push(self, dockerfile: str, tag: str) -> BuildResult:
+        """Validate, build, and push in one call."""
+        ...

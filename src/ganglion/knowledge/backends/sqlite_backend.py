@@ -34,7 +34,10 @@ class SqliteKnowledgeBackend:
                     stage TEXT,
                     timestamp TEXT NOT NULL,
                     run_id TEXT,
-                    source_bot TEXT
+                    source_bot TEXT,
+                    subnet_id TEXT,
+                    record_type TEXT DEFAULT 'strategy',
+                    confirmation_count INTEGER DEFAULT 1
                 )
             """)
             conn.execute("""
@@ -47,7 +50,10 @@ class SqliteKnowledgeBackend:
                     stage TEXT,
                     timestamp TEXT NOT NULL,
                     run_id TEXT,
-                    source_bot TEXT
+                    source_bot TEXT,
+                    subnet_id TEXT,
+                    record_type TEXT DEFAULT 'strategy',
+                    confirmation_count INTEGER DEFAULT 1
                 )
             """)
             conn.execute(
@@ -66,6 +72,21 @@ class SqliteKnowledgeBackend:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_antipatterns_timestamp ON antipatterns(timestamp)"
             )
+            # Migration: add new columns to existing tables
+            for table in ("patterns", "antipatterns"):
+                existing = {
+                    row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                if "subnet_id" not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN subnet_id TEXT")
+                if "record_type" not in existing:
+                    conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN record_type TEXT DEFAULT 'strategy'"
+                    )
+                if "confirmation_count" not in existing:
+                    conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN confirmation_count INTEGER DEFAULT 1"
+                    )
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS agent_designs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,8 +123,9 @@ class SqliteKnowledgeBackend:
             conn.execute(
                 """INSERT INTO patterns
                    (capability, description, config, metric_value,
-                    metric_name, stage, timestamp, run_id, source_bot)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    metric_name, stage, timestamp, run_id, source_bot,
+                    subnet_id, record_type, confirmation_count)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     pattern.capability,
                     pattern.description,
@@ -114,6 +136,9 @@ class SqliteKnowledgeBackend:
                     pattern.timestamp.isoformat(),
                     pattern.run_id,
                     pattern.source_bot,
+                    pattern.subnet_id,
+                    pattern.record_type,
+                    pattern.confirmation_count,
                 ),
             )
 
@@ -122,8 +147,9 @@ class SqliteKnowledgeBackend:
             conn.execute(
                 """INSERT INTO antipatterns
                    (capability, error_summary, config, failure_mode,
-                    stage, timestamp, run_id, source_bot)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    stage, timestamp, run_id, source_bot,
+                    subnet_id, record_type, confirmation_count)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     antipattern.capability,
                     antipattern.error_summary,
@@ -133,6 +159,9 @@ class SqliteKnowledgeBackend:
                     antipattern.timestamp.isoformat(),
                     antipattern.run_id,
                     antipattern.source_bot,
+                    antipattern.subnet_id,
+                    antipattern.record_type,
+                    antipattern.confirmation_count,
                 ),
             )
 
@@ -201,6 +230,12 @@ class SqliteKnowledgeBackend:
         if query.exclude_source is not None:
             conditions.append("(source_bot IS NULL OR source_bot != ?)")
             params.append(query.exclude_source)
+        if query.subnet_id is not None:
+            conditions.append("subnet_id = ?")
+            params.append(query.subnet_id)
+        if query.record_type is not None:
+            conditions.append("record_type = ?")
+            params.append(query.record_type)
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         sql = f"SELECT * FROM patterns {where} ORDER BY timestamp DESC LIMIT ?"
@@ -225,6 +260,12 @@ class SqliteKnowledgeBackend:
         if query.exclude_source is not None:
             conditions.append("(source_bot IS NULL OR source_bot != ?)")
             params.append(query.exclude_source)
+        if query.subnet_id is not None:
+            conditions.append("subnet_id = ?")
+            params.append(query.subnet_id)
+        if query.record_type is not None:
+            conditions.append("record_type = ?")
+            params.append(query.record_type)
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         sql = f"SELECT * FROM antipatterns {where} ORDER BY timestamp DESC LIMIT ?"
@@ -235,6 +276,37 @@ class SqliteKnowledgeBackend:
             rows = conn.execute(sql, params).fetchall()
 
         return [self._row_to_antipattern(row) for row in rows]
+
+    async def find_similar_pattern(
+        self, capability: str, description: str, record_type: str = "strategy"
+    ) -> int | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM patterns"
+                " WHERE capability = ? AND description = ? AND record_type = ? LIMIT 1",
+                (capability, description, record_type),
+            ).fetchone()
+        return row[0] if row else None
+
+    async def find_similar_antipattern(
+        self, capability: str, error_summary: str, record_type: str = "strategy"
+    ) -> int | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM antipatterns"
+                " WHERE capability = ? AND error_summary = ? AND record_type = ? LIMIT 1",
+                (capability, error_summary, record_type),
+            ).fetchone()
+        return row[0] if row else None
+
+    async def increment_confirmation(self, table: str, record_id: int) -> None:
+        if table not in ("patterns", "antipatterns"):
+            raise ValueError(f"Invalid table: {table}")
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE {table} SET confirmation_count = confirmation_count + 1 WHERE id = ?",
+                (record_id,),
+            )
 
     async def count(self) -> dict[str, int]:
         with self._connect() as conn:
@@ -275,6 +347,9 @@ class SqliteKnowledgeBackend:
             timestamp=datetime.fromisoformat(row["timestamp"]),
             run_id=row["run_id"],
             source_bot=row["source_bot"],
+            subnet_id=row["subnet_id"],
+            record_type=row["record_type"] or "strategy",
+            confirmation_count=row["confirmation_count"] or 1,
         )
 
     def _row_to_antipattern(self, row: sqlite3.Row) -> Antipattern:
@@ -290,6 +365,9 @@ class SqliteKnowledgeBackend:
             timestamp=datetime.fromisoformat(row["timestamp"]),
             run_id=row["run_id"],
             source_bot=row["source_bot"],
+            subnet_id=row["subnet_id"],
+            record_type=row["record_type"] or "strategy",
+            confirmation_count=row["confirmation_count"] or 1,
         )
 
     def _row_to_agent_design(self, row: sqlite3.Row) -> AgentDesignPattern:

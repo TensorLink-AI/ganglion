@@ -20,6 +20,9 @@ class Pattern:
     timestamp: datetime = field(default_factory=datetime.utcnow)
     run_id: str | None = None
     source_bot: str | None = None
+    subnet_id: str | None = None
+    record_type: str = "strategy"
+    confirmation_count: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -32,6 +35,9 @@ class Pattern:
             "timestamp": self.timestamp.isoformat(),
             "run_id": self.run_id,
             "source_bot": self.source_bot,
+            "subnet_id": self.subnet_id,
+            "record_type": self.record_type,
+            "confirmation_count": self.confirmation_count,
         }
 
     @classmethod
@@ -51,6 +57,9 @@ class Pattern:
             timestamp=parsed_timestamp,
             run_id=data.get("run_id"),
             source_bot=data.get("source_bot"),
+            subnet_id=data.get("subnet_id"),
+            record_type=data.get("record_type", "strategy"),
+            confirmation_count=data.get("confirmation_count", 1),
         )
 
 
@@ -66,6 +75,9 @@ class Antipattern:
     timestamp: datetime = field(default_factory=datetime.utcnow)
     run_id: str | None = None
     source_bot: str | None = None
+    subnet_id: str | None = None
+    record_type: str = "strategy"
+    confirmation_count: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -77,6 +89,9 @@ class Antipattern:
             "timestamp": self.timestamp.isoformat(),
             "run_id": self.run_id,
             "source_bot": self.source_bot,
+            "subnet_id": self.subnet_id,
+            "record_type": self.record_type,
+            "confirmation_count": self.confirmation_count,
         }
 
     @classmethod
@@ -95,6 +110,9 @@ class Antipattern:
             timestamp=parsed_timestamp,
             run_id=data.get("run_id"),
             source_bot=data.get("source_bot"),
+            subnet_id=data.get("subnet_id"),
+            record_type=data.get("record_type", "strategy"),
+            confirmation_count=data.get("confirmation_count", 1),
         )
 
 
@@ -160,3 +178,5 @@ class KnowledgeQuery:
     since: datetime | None = None
     min_metric: float | None = None
     exclude_source: str | None = None
+    subnet_id: str | None = None
+    record_type: str | None = None
