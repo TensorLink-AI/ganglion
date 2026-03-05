@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from ganglion.compute.protocol import JobHandle, JobResult, JobSpec, JobStatus
@@ -55,27 +55,21 @@ class RunPodBackend:
 
     def _create_pod_mutation(self, pod_config: dict[str, Any]) -> str:
         """Build the GraphQL mutation for creating a pod."""
-        return """
-        mutation {
-            podFindAndDeployOnDemand(input: {
-                name: "%(name)s",
-                imageName: "%(imageName)s",
-                gpuTypeId: "%(gpuTypeId)s",
-                gpuCount: %(gpuCount)d,
-                containerDiskInGb: %(containerDiskInGb)d,
-                dockerArgs: "%(dockerArgs)s",
-                cloudType: "%(cloudType)s"
-            }) {
-                id
-                desiredStatus
-                imageName
-                machine { gpuDisplayName }
-            }
-        }
-        """ % {
-            **pod_config,
-            "cloudType": self._config.cloud_type,
-        }
+        cloud_type = self._config.cloud_type
+        c = {**pod_config, "cloudType": cloud_type}
+        return (
+            "mutation {"
+            " podFindAndDeployOnDemand(input: {"
+            f' name: "{c["name"]}",'
+            f' imageName: "{c["imageName"]}",'
+            f' gpuTypeId: "{c["gpuTypeId"]}",'
+            f' gpuCount: {c["gpuCount"]},'
+            f' containerDiskInGb: {c["containerDiskInGb"]},'
+            f' dockerArgs: "{c["dockerArgs"]}",'
+            f' cloudType: "{c["cloudType"]}"'
+            " }) { id desiredStatus imageName machine { gpuDisplayName } }"
+            " }"
+        )
 
     async def _api_request(self, query: str) -> dict[str, Any]:
         """Make a GraphQL request to the RunPod API."""
@@ -119,15 +113,12 @@ class RunPodBackend:
 
     async def _get_pod_status(self, pod_id: str) -> str:
         """Query the current status of a RunPod pod."""
-        query = """
-        query {
-            pod(input: { podId: "%s" }) {
-                id
-                desiredStatus
-                runtime { uptimeInSeconds gpus { id } }
-            }
-        }
-        """ % pod_id
+        query = (
+            "query {"
+            f' pod(input: {{ podId: "{pod_id}" }}) {{'
+            " id desiredStatus runtime { uptimeInSeconds gpus { id } }"
+            " } }"
+        )
         data = await self._api_request(query)
         pod = data.get("data", {}).get("pod", {})
         return pod.get("desiredStatus", "UNKNOWN")
@@ -139,11 +130,7 @@ class RunPodBackend:
 
     async def _terminate_pod(self, pod_id: str) -> None:
         """Terminate a RunPod pod."""
-        query = """
-        mutation {
-            podTerminate(input: { podId: "%s" })
-        }
-        """ % pod_id
+        query = f'mutation {{ podTerminate(input: {{ podId: "{pod_id}" }}) }}'
         try:
             await self._api_request(query)
         except Exception:

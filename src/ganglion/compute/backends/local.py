@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any
 
 from ganglion.compute.protocol import JobHandle, JobResult, JobSpec, JobStatus
 
@@ -111,8 +111,6 @@ class LocalBackend:
         if outputs_dir.is_dir():
             for path in outputs_dir.rglob("*"):
                 if path.is_file():
-                    try:
+                    with contextlib.suppress(OSError):
                         artifacts[path.name] = path.read_bytes()
-                    except OSError:
-                        pass
         return artifacts

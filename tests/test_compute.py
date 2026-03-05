@@ -3,22 +3,14 @@
 import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from ganglion.compute.artifacts import LocalArtifactStore
 from ganglion.compute.backends.local import LocalBackend
 from ganglion.compute.job_manager import JobManager
-from ganglion.compute.protocol import (
-    ComputeBackend,
-    JobHandle,
-    JobResult,
-    JobSpec,
-    JobStatus,
-)
+from ganglion.compute.protocol import JobHandle, JobResult, JobSpec, JobStatus
 from ganglion.compute.router import ComputeRoute, ComputeRouter
-
 
 # ── Protocol / data class tests ────────────────────────────
 
