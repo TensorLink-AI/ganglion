@@ -53,7 +53,7 @@ class ToolStageDef:
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
-            "fn": self.fn.__qualname__ if self.fn else None,
+            "fn": self.fn.__qualname__,
             "retry": str(self.retry) if self.retry else None,
             "is_optional": self.is_optional,
             "depends_on": self.depends_on,
@@ -249,7 +249,7 @@ class PipelineDef:
                     in_degree[stage.name] += 1
 
         queue = [name for name, degree in in_degree.items() if degree == 0]
-        ordered: list[StageDef] = []
+        ordered: list[AnyStage] = []
 
         while queue:
             # Sort for deterministic ordering
