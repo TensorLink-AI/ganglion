@@ -194,7 +194,9 @@ class PipelineOrchestrator:
         return result
 
     async def _execute_stage(
-        self, stage_def: StageDef | ToolStageDef, task: TaskContext,
+        self,
+        stage_def: StageDef | ToolStageDef,
+        task: TaskContext,
     ) -> StageResult:
         """Run a single stage — dispatches to agent or tool execution."""
         if isinstance(stage_def, ToolStageDef):
@@ -388,7 +390,8 @@ class PipelineOrchestrator:
                                 fingerprint=fingerprint,
                                 stage=stage_def.name,
                                 source_bot=self.knowledge.bot_id
-                                    if hasattr(self.knowledge, "bot_id") else None,
+                                if hasattr(self.knowledge, "bot_id")
+                                else None,
                             )
                         )
             else:

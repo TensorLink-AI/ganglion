@@ -375,10 +375,12 @@ class TestPipelineDefWithToolStages:
             pass
 
         p = PipelineDef(name="test", stages=[StageDef(name="a", agent="A")])
-        p2 = p.apply_operation({
-            "op": "add_stage",
-            "stage": {"name": "validate", "fn": validate, "depends_on": ["a"]},
-        })
+        p2 = p.apply_operation(
+            {
+                "op": "add_stage",
+                "stage": {"name": "validate", "fn": validate, "depends_on": ["a"]},
+            }
+        )
         assert len(p2.stages) == 2
         assert isinstance(p2.stages[1], ToolStageDef)
         assert p2.stages[1].name == "validate"

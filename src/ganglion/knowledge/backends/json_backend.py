@@ -49,9 +49,7 @@ class JsonKnowledgeBackend:
     def _load_agent_designs(self) -> list[dict[str, Any]]:
         if self._agent_designs_path.exists():
             try:
-                result: list[dict[str, Any]] = json.loads(
-                    self._agent_designs_path.read_text()
-                )
+                result: list[dict[str, Any]] = json.loads(self._agent_designs_path.read_text())
                 return result
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning("Failed to load agent designs: %s", e)

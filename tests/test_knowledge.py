@@ -683,9 +683,7 @@ class TestAgentDesignJsonBackend:
         )
         await json_backend.save_agent_design(design)
 
-        results = await json_backend.query_agent_designs(
-            KnowledgeQuery(capability="forecast")
-        )
+        results = await json_backend.query_agent_designs(KnowledgeQuery(capability="forecast"))
         assert len(results) == 1
         assert results[0].agent_class == "ForecastAgentV2"
         assert results[0].tools == ["tool_a", "tool_b"]
@@ -698,16 +696,12 @@ class TestAgentDesignJsonBackend:
             AgentDesignPattern(capability="train", agent_class="B")
         )
 
-        results = await json_backend.query_agent_designs(
-            KnowledgeQuery(capability="forecast")
-        )
+        results = await json_backend.query_agent_designs(KnowledgeQuery(capability="forecast"))
         assert len(results) == 1
         assert results[0].agent_class == "A"
 
     async def test_count_includes_designs(self, json_backend):
-        await json_backend.save_agent_design(
-            AgentDesignPattern(capability="a", agent_class="X")
-        )
+        await json_backend.save_agent_design(AgentDesignPattern(capability="a", agent_class="X"))
         counts = await json_backend.count()
         assert counts["agent_designs"] == 1
 
@@ -741,9 +735,7 @@ class TestAgentDesignSqliteBackend:
         )
         await backend.save_agent_design(design)
 
-        results = await backend.query_agent_designs(
-            KnowledgeQuery(capability="forecast")
-        )
+        results = await backend.query_agent_designs(KnowledgeQuery(capability="forecast"))
         assert len(results) == 1
         assert results[0].agent_class == "ForecastAgentV2"
         assert results[0].tools == ["tool_a", "tool_b"]
@@ -751,9 +743,7 @@ class TestAgentDesignSqliteBackend:
 
     async def test_count_includes_designs(self, tmp_dir):
         backend = SqliteKnowledgeBackend(tmp_dir / "knowledge.db")
-        await backend.save_agent_design(
-            AgentDesignPattern(capability="a", agent_class="X")
-        )
+        await backend.save_agent_design(AgentDesignPattern(capability="a", agent_class="X"))
         counts = await backend.count()
         assert counts["agent_designs"] == 1
 

@@ -129,9 +129,7 @@ class KnowledgeStore:
             lines.append("\n### Agent Designs That Worked")
             for d in designs:
                 metric_str = (
-                    f" ({d.metric_name}={d.metric_value})"
-                    if d.metric_value is not None
-                    else ""
+                    f" ({d.metric_name}={d.metric_value})" if d.metric_value is not None else ""
                 )
                 tools_str = ", ".join(d.tools) if d.tools else "none"
                 lines.append(f"- {d.agent_class} with tools [{tools_str}]{metric_str}")
