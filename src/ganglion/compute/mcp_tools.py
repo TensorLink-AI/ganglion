@@ -12,6 +12,41 @@ from typing import Any
 from ganglion.state.framework_state import FrameworkState
 
 
+def _render_dockerfile(
+    base_image: str,
+    dependencies: list[str],
+    entrypoint: str,
+    workdir: str = "/app",
+    env: dict[str, str] | None = None,
+    copy_files: list[str] | None = None,
+) -> str:
+    """Render a Dockerfile from structured parameters."""
+    lines = [f"FROM {base_image}", ""]
+
+    if env:
+        for key, value in env.items():
+            lines.append(f"ENV {key}={value}")
+        lines.append("")
+
+    lines.append(f"WORKDIR {workdir}")
+    lines.append("")
+
+    if dependencies:
+        deps = " ".join(dependencies)
+        lines.append(f"RUN pip install --no-cache-dir {deps}")
+        lines.append("")
+
+    if copy_files:
+        for src in copy_files:
+            lines.append(f"COPY {src} {workdir}/")
+        lines.append("")
+
+    parts = ['"' + p + '"' for p in entrypoint.split()]
+    lines.append("ENTRYPOINT [" + ", ".join(parts) + "]")
+
+    return "\n".join(lines) + "\n"
+
+
 def register_compute_tools(state: FrameworkState) -> None:
     """Register compute observation tools into the tool registry."""
     if state.job_manager is None:
@@ -61,6 +96,54 @@ def register_compute_tools(state: FrameworkState) -> None:
             return json.dumps({"backends": [], "routes": []})
         return json.dumps(state.compute_router.to_dict())
 
+    async def write_dockerfile(
+        base_image: str,
+        dependencies: str,
+        entrypoint: str,
+        tag: str,
+    ) -> str:
+        """Generate a Dockerfile for a training job.
+
+        The bot declares what it needs; infrastructure validates and builds.
+        Returns the generated Dockerfile content and validation result.
+        """
+        deps = [d.strip() for d in dependencies.split(",") if d.strip()]
+        dockerfile = _render_dockerfile(base_image, deps, entrypoint)
+
+        result: dict[str, Any] = {
+            "dockerfile": dockerfile,
+            "tag": tag,
+        }
+
+        # If a build backend is available, validate immediately
+        if state.build_backend is not None:
+            errors = await state.build_backend.validate(dockerfile)
+            result["validation_errors"] = errors
+            result["valid"] = len(errors) == 0
+        else:
+            result["valid"] = True
+            result["validation_errors"] = []
+
+        return json.dumps(result)
+
+    async def build_image(dockerfile: str, tag: str) -> str:
+        """Build and push a container image from a Dockerfile.
+
+        The bot provides the Dockerfile text and a tag. Infrastructure
+        validates, builds, and pushes. Credentials are server-side only.
+        Returns the image reference on success.
+        """
+        if state.build_backend is None:
+            return json.dumps({"success": False, "error": "No build backend configured"})
+
+        build_result = await state.build_backend.build_and_push(dockerfile, tag)
+        return json.dumps({
+            "success": build_result.success,
+            "image_ref": build_result.image_ref,
+            "error": build_result.error,
+            "duration_seconds": build_result.duration_seconds,
+        })
+
     _tools: list[tuple[str, Any, str, dict[str, Any]]] = [
         (
             "compute_status",
@@ -89,6 +172,56 @@ def register_compute_tools(state: FrameworkState) -> None:
             compute_routes,
             "Show current stage-to-backend routing table.",
             {"type": "object", "properties": {}},
+        ),
+        (
+            "write_dockerfile",
+            write_dockerfile,
+            "Generate a Dockerfile for a training job. Bot declares base image, "
+            "dependencies (comma-separated), entrypoint, and tag. Infrastructure "
+            "validates against allowed base images.",
+            {
+                "type": "object",
+                "properties": {
+                    "base_image": {
+                        "type": "string",
+                        "description": "Base Docker image (e.g. 'nvidia/pytorch:24.01-devel')",
+                    },
+                    "dependencies": {
+                        "type": "string",
+                        "description": "Comma-separated pip packages (e.g. 'torch,transformers,wandb')",
+                    },
+                    "entrypoint": {
+                        "type": "string",
+                        "description": "Command to run (e.g. 'python train.py')",
+                    },
+                    "tag": {
+                        "type": "string",
+                        "description": "Image tag (e.g. 'training-exp-42')",
+                    },
+                },
+                "required": ["base_image", "dependencies", "entrypoint", "tag"],
+            },
+        ),
+        (
+            "build_image",
+            build_image,
+            "Build and push a container image from a Dockerfile. Bot provides "
+            "Dockerfile text and tag. Infrastructure validates, builds, and pushes. "
+            "Credentials are server-side only.",
+            {
+                "type": "object",
+                "properties": {
+                    "dockerfile": {
+                        "type": "string",
+                        "description": "Full Dockerfile content",
+                    },
+                    "tag": {
+                        "type": "string",
+                        "description": "Image tag (e.g. 'training-exp-42')",
+                    },
+                },
+                "required": ["dockerfile", "tag"],
+            },
         ),
     ]
 

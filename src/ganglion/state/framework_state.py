@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ganglion.compute.job_manager import JobManager
-from ganglion.compute.protocol import ComputeBackend
+from ganglion.compute.protocol import BuildBackend, ComputeBackend
 from ganglion.compute.router import ComputeRouter
 from ganglion.knowledge.store import KnowledgeStore
 from ganglion.orchestration.errors import (
@@ -52,6 +52,7 @@ class FrameworkState:
         validator: MutationValidator | None = None,
         mcp_configs: list[Any] | None = None,
         compute_router: ComputeRouter | None = None,
+        build_backend: BuildBackend | None = None,
     ):
         self.subnet_config = subnet_config
         self.pipeline_def = pipeline_def
@@ -65,6 +66,9 @@ class FrameworkState:
         # Compute
         self.compute_router = compute_router
         self._job_manager = JobManager(compute_router) if compute_router else None
+
+        # Image building
+        self.build_backend: BuildBackend | None = build_backend
 
         # MCP client bridges (name -> bridge)
         self._mcp_configs: list[Any] = mcp_configs or []
@@ -145,6 +149,7 @@ class FrameworkState:
         knowledge = getattr(config_module, "knowledge", None)
         mcp_clients = getattr(config_module, "mcp_clients", None)
         compute_router = getattr(config_module, "compute_router", None)
+        build_backend = getattr(config_module, "build_backend", None)
 
         # Set bot_id on knowledge store for multi-bot shared knowledge
         if knowledge is not None and bot_id is not None:
@@ -194,6 +199,7 @@ class FrameworkState:
             knowledge=knowledge,
             mcp_configs=mcp_clients,
             compute_router=compute_router,
+            build_backend=build_backend,
         )
 
     # ── Observation methods ─────────────────────────────────
