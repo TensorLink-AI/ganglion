@@ -1,5 +1,5 @@
 ---
-name: codebase-guide
+name: ganglion
 description: "Use for every task involving this project. Covers running Ganglion, its CLI commands, HTTP bridge API, pipeline execution, knowledge queries, configuration, and operational workflows. Trigger phrases: 'run the pipeline', 'start the server', 'check status', 'query knowledge', 'configure', 'call the API', 'scaffold a project', 'check metrics', 'rollback', 'swap policy'."
 homepage: https://github.com/TensorLink-AI/ganglion
 metadata: {"openclaw": {"emoji": "📘", "requires": {"bins": ["python3", "ganglion"], "env": ["LLM_PROVIDER_API_KEY"]}, "always": true}}
