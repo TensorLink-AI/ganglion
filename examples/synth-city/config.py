@@ -158,17 +158,17 @@ mcp_clients = [
 compute_router = ComputeRouter(
     backends={},  # Backends registered at runtime via CLI or ganglion_connect_mcp
     routes=[
-        # GPU-heavy simulation → RunPod with synth-worker image
+        # GPU-heavy simulation → RunPod (image resolved from docker_prefabs at runtime)
         ComputeRoute(
             pattern="simulate",
             backend="runpod",
-            overrides={"gpu_type": "A10G", "image": "synth-city-worker:latest"},
+            overrides={"gpu_type": "A10G"},
         ),
         # Backtest can run on RunPod too (for large path sets)
         ComputeRoute(
             pattern="backtest",
             backend="runpod",
-            overrides={"image": "synth-city-worker:latest"},
+            overrides={},
         ),
         # Calibration and everything else stays local
         ComputeRoute(pattern="calibrate", backend="local"),
@@ -253,20 +253,27 @@ async def score_paths(ctx: TaskContext) -> AgentResult:
     if historical_prices:
         job_spec["realized_prices"] = historical_prices
 
-    # Try to dispatch to compute backend
+    # Try to dispatch to compute backend using the declared prefab
     router = ctx.get("_compute_router")
     if router:
-        from ganglion.compute.protocol import JobSpec
+        # Use the declared docker prefab rather than hardcoding the image
+        prefab = ctx.subnet_config.docker_prefabs.get("synth-worker-cpu")
+        if prefab:
+            spec = prefab.to_job_spec(
+                command=["python", "/app/handler.py"],
+                env={"GANGLION_JOB_SPEC": json.dumps(job_spec)},
+            )
+        else:
+            from ganglion.compute.protocol import JobSpec
 
-        backend, spec = router.resolve_with_overrides(
-            "backtest",
-            JobSpec(
+            spec = JobSpec(
                 image="synth-city-worker:latest",
                 command=["python", "/app/handler.py"],
                 env={"GANGLION_JOB_SPEC": json.dumps(job_spec)},
                 artifacts_dir="/outputs",
-            ),
-        )
+            )
+
+        backend, spec = router.resolve_with_overrides("backtest", spec)
         try:
             handle = await backend.submit(spec)
             # Poll until done (simplified — real impl should use async polling)
