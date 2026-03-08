@@ -1,0 +1,9 @@
+[
+  {
+    "name": "miner",
+    "token": "changeme",
+    "port": 8902,
+    "transport": "sse",
+    "categories": ["data", "training", "evaluation"]
+  }
+]

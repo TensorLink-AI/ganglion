@@ -161,6 +161,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Port for SSE transport (default: 8900)",
     )
     mcp_serve_parser.add_argument(
+        "--host",
+        default=None,
+        help="Host to bind SSE server to (default: 127.0.0.1, use 0.0.0.0 for remote access)",
+    )
+    mcp_serve_parser.add_argument(
         "--roles",
         default=None,
         help="Path to roles JSON file for multi-role MCP serving",
@@ -357,6 +362,8 @@ def _run_run(args: argparse.Namespace) -> None:
 def _run_mcp_serve(args: argparse.Namespace) -> None:
     state = _load_state(args.project_dir, bot_id=getattr(args, "bot_id", None))
 
+    sse_host = args.host or "127.0.0.1"
+
     async def _serve() -> None:
         await state.initialize_mcp()
 
@@ -397,7 +404,7 @@ def _run_mcp_serve(args: argparse.Namespace) -> None:
                         usage_tracker=usage_tracker,
                     )
                     if role.transport == "sse":
-                        tasks.append(bridge.run_sse(host="127.0.0.1", port=role.port))
+                        tasks.append(bridge.run_sse(host=sse_host, port=role.port))
                     else:
                         tasks.append(bridge.run_stdio())
 
@@ -415,7 +422,7 @@ def _run_mcp_serve(args: argparse.Namespace) -> None:
                     role=getattr(args, "bot_id", None),
                 )
                 if args.transport == "sse":
-                    await bridge.run_sse(host="127.0.0.1", port=args.mcp_port)
+                    await bridge.run_sse(host=sse_host, port=args.mcp_port)
                 else:
                     await bridge.run_stdio()
         finally:
