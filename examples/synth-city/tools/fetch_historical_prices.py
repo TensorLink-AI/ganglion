@@ -20,8 +20,6 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
-import numpy as np
-
 from ganglion.composition.tool_registry import tool
 from ganglion.composition.tool_returns import ExperimentResult
 
@@ -151,6 +149,8 @@ def fetch_historical_prices(config: dict) -> ExperimentResult:
     timestamps, prices = _transform_to_series(raw, from_ts, to_ts, time_increment)
 
     # Compute returns in basis points (matching validator scoring)
+    import numpy as np
+
     valid_prices = [p for p in prices if p is not None]
     returns_bps: list[float] = []
     if len(valid_prices) >= 2:

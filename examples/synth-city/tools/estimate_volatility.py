@@ -13,8 +13,6 @@ Competitive approaches to try:
 
 import math
 
-import numpy as np
-
 from ganglion.composition.tool_registry import tool
 from ganglion.composition.tool_returns import ExperimentResult
 
@@ -35,6 +33,8 @@ def estimate_volatility(config: dict) -> ExperimentResult:
             content="Need at least 10 return observations.  Pass 'returns' as a list of floats.",
             metrics={},
         )
+
+    import numpy as np
 
     method = config.get("method", "realized")
     asset = config.get("asset", "BTC")

@@ -10,15 +10,8 @@ Reference:
   https://github.com/mode-network/synth-subnet/blob/main/synth/validator/crps_calculation.py
 """
 
-import numpy as np
-
 from ganglion.composition.tool_registry import tool
 from ganglion.composition.tool_returns import ExperimentResult
-
-try:
-    from properscoring import crps_ensemble as _crps_ensemble
-except ImportError:
-    _crps_ensemble = None
 
 
 @tool("score_paths", category="evaluation")
@@ -32,6 +25,13 @@ def score_paths(config: dict) -> ExperimentResult:
         scoring_intervals: list[int]        — intervals in seconds to evaluate
                                               (default [300, 1800, 10800, 86400])
     """
+    import numpy as np
+
+    try:
+        from properscoring import crps_ensemble as _crps_ensemble
+    except ImportError:
+        _crps_ensemble = None
+
     if _crps_ensemble is None:
         return ExperimentResult(
             content="properscoring is not installed.  Run: pip install properscoring",

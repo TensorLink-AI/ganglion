@@ -20,15 +20,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
-import numpy as np
-
 from ganglion.composition.tool_registry import tool
 from ganglion.composition.tool_returns import ExperimentResult
-
-try:
-    from properscoring import crps_ensemble as _crps_ensemble
-except ImportError:
-    _crps_ensemble = None
 
 
 # ── SN50 scoring intervals (from prompt_config.py) ──────────
@@ -93,7 +86,9 @@ SIGMA_MAP: dict[str, float] = {
 def _simulate_gbm(
     price: float, sigma: float, time_increment: int,
     time_length: int, n: int,
-) -> np.ndarray:
+):
+    import numpy as np
+
     dt = time_increment / 3600
     steps = time_length // time_increment
     std = sigma * math.sqrt(dt)
@@ -108,6 +103,8 @@ def _simulate_gbm(
 
 def _label_observed_blocks(arr: np.ndarray) -> np.ndarray:
     """Group consecutive non-NaN values into numbered blocks (-1 for gaps)."""
+    import numpy as np
+
     not_nan = ~np.isnan(arr)
     block_start = not_nan & np.concatenate(([True], ~not_nan[:-1]))
     group_numbers = np.cumsum(block_start) - 1
@@ -125,6 +122,13 @@ def _calculate_crps(
 
     Returns a dict with per-interval CRPS and the total score.
     """
+    import numpy as np
+
+    try:
+        from properscoring import crps_ensemble as _crps_ensemble
+    except ImportError:
+        _crps_ensemble = None
+
     breakdown: dict[str, float] = {}
     total = 0.0
 
@@ -220,6 +224,13 @@ def backtest(config: dict) -> ExperimentResult:
     Returns detailed CRPS breakdown per scoring interval, the weighted
     score (with per-asset coefficient), and diagnostic metrics.
     """
+    import numpy as np
+
+    try:
+        from properscoring import crps_ensemble as _crps_ensemble  # noqa: F811
+    except ImportError:
+        _crps_ensemble = None
+
     if _crps_ensemble is None:
         return ExperimentResult(
             content="properscoring is not installed.  Run: pip install properscoring",
