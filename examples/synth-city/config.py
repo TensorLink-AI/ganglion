@@ -110,21 +110,28 @@ subnet_config = SubnetConfig(
         "emission_split": "50% low-freq / 50% high-freq",
     },
     docker_prefabs={
-        "mc-simulator": DockerPrefab(
-            name="mc-simulator",
-            image="ghcr.io/mode-network/synth-mc:latest",
+        # The synth-city training worker — handles train, validate, backtest,
+        # and agent-submitted scripts. Agents dispatch jobs to this image via
+        # RunPodBackend; the GANGLION_JOB_SPEC env var carries the full spec.
+        # Build:  docker build -f examples/synth-city/Dockerfile.runpod -t synth-city-worker .
+        "synth-worker": DockerPrefab(
+            name="synth-worker",
+            image="synth-city-worker:latest",
             gpu_type="A10G",
             gpu_count=1,
             memory_gb=16,
             timeout_seconds=1800,
-            env={"NUM_SIMULATIONS": "1000", "PRECISION": "float32"},
+            env={"GANGLION_NUM_SIMULATIONS": "1000"},
+            artifacts_dir="/outputs",
         ),
-        "calibrator": DockerPrefab(
-            name="calibrator",
-            image="ghcr.io/mode-network/synth-calibrate:latest",
+        # CPU-only variant for calibration / validation (no GPU needed)
+        "synth-worker-cpu": DockerPrefab(
+            name="synth-worker-cpu",
+            image="synth-city-worker:latest",
             cpu_cores=4,
             memory_gb=8,
             timeout_seconds=600,
+            artifacts_dir="/outputs",
         ),
     },
 )
@@ -144,12 +151,26 @@ mcp_clients = [
 ]
 
 # ── Compute routing ──────────────────────────────────────────
-# Route GPU-heavy stages to RunPod, keep the rest local.
+# Route stages to the synth-worker on RunPod or locally.
+# The RunPod backend is registered at runtime (requires RUNPOD_API_KEY).
+# Job specs are passed via the GANGLION_JOB_SPEC env var in dockerArgs.
 
 compute_router = ComputeRouter(
-    backends={},  # Backends registered at runtime via CLI or API
+    backends={},  # Backends registered at runtime via CLI or ganglion_connect_mcp
     routes=[
-        ComputeRoute(pattern="simulate", backend="runpod", overrides={"gpu_type": "A10G"}),
+        # GPU-heavy simulation → RunPod with synth-worker image
+        ComputeRoute(
+            pattern="simulate",
+            backend="runpod",
+            overrides={"gpu_type": "A10G", "image": "synth-city-worker:latest"},
+        ),
+        # Backtest can run on RunPod too (for large path sets)
+        ComputeRoute(
+            pattern="backtest",
+            backend="runpod",
+            overrides={"image": "synth-city-worker:latest"},
+        ),
+        # Calibration and everything else stays local
         ComputeRoute(pattern="calibrate", backend="local"),
         ComputeRoute(pattern="default", backend="local"),
     ],
@@ -157,29 +178,144 @@ compute_router = ComputeRouter(
 
 
 # ── Deterministic stages ─────────────────────────────────────
-# Price fetching and CRPS scoring are pure data operations — no LLM needed.
+# These are ToolStageDef callbacks — pure data operations, no LLM needed.
+# They build job specs and dispatch to the synth-city-worker container
+# (via compute_router → RunPodBackend) or run locally as fallback.
 
 
 async def fetch_prices(ctx: TaskContext) -> AgentResult:
-    """Fetch historical prices for the target asset."""
+    """Fetch historical prices for the target asset via the Pyth API.
+
+    Uses the fetch_historical_prices tool if registered, otherwise
+    returns a placeholder for the agent to fill in.
+    """
     from ganglion.runtime.types import AgentResult
 
-    asset = ctx.get("target_asset")
+    asset = ctx.get("target_asset", "BTC")
+    competition = ctx.get("competition", "low_freq")
+    time_increment = 60 if competition == "high_freq" else 300
+    hours_back = 1 if competition == "high_freq" else 24
+
+    # Try to use the registered fetch_historical_prices tool
+    tool_registry = ctx.get("_tool_registry")
+    if tool_registry:
+        fetch_tool = tool_registry.get("fetch_historical_prices")
+        if fetch_tool:
+            result = fetch_tool.func({
+                "asset": asset,
+                "hours_back": hours_back,
+                "time_increment": time_increment,
+            })
+            if hasattr(result, "metrics") and result.metrics.get("prices"):
+                return AgentResult(
+                    success=True,
+                    structured={
+                        "asset": asset,
+                        "prices": result.metrics["prices"],
+                        "timestamps": result.metrics.get("timestamps", []),
+                    },
+                    summary=f"Fetched {result.metrics.get('valid_points', 0)} prices for {asset}",
+                )
+
+    # Fallback — the agent or a subsequent stage must provide real prices
     return AgentResult(
         success=True,
-        structured={"asset": asset, "prices": []},
-        summary=f"Fetched historical prices for {asset}",
+        structured={"asset": asset, "prices": [], "source": "placeholder"},
+        summary=f"No price data fetched for {asset} — agent should provide via tool",
     )
 
 
 async def score_paths(ctx: TaskContext) -> AgentResult:
-    """Compute CRPS score against historical data."""
+    """Dispatch a backtest job to the synth-city worker.
+
+    Builds a job spec from pipeline context and sends it to the
+    training worker. If no compute backend is available, falls back
+    to the local backtest tool.
+    """
+    import json
+
     from ganglion.runtime.types import AgentResult
 
+    asset = ctx.get("target_asset", "BTC")
+    competition = ctx.get("competition", "low_freq")
+    price_paths = ctx.get("price_paths")
+    historical_prices = ctx.get("historical_prices", [])
+
+    # Build the job spec for the training worker
+    job_spec = {
+        "mode": "backtest",
+        "asset": asset,
+        "competition": competition,
+    }
+
+    if price_paths is not None:
+        job_spec["simulated_paths"] = price_paths
+    if historical_prices:
+        job_spec["realized_prices"] = historical_prices
+
+    # Try to dispatch to compute backend
+    router = ctx.get("_compute_router")
+    if router:
+        from ganglion.compute.protocol import JobSpec
+
+        backend, spec = router.resolve_with_overrides(
+            "backtest",
+            JobSpec(
+                image="synth-city-worker:latest",
+                command=["python", "/app/handler.py"],
+                env={"GANGLION_JOB_SPEC": json.dumps(job_spec)},
+                artifacts_dir="/outputs",
+            ),
+        )
+        try:
+            handle = await backend.submit(spec)
+            # Poll until done (simplified — real impl should use async polling)
+            import asyncio
+
+            for _ in range(60):
+                handle = await backend.poll(handle)
+                if handle.status.value in ("succeeded", "failed"):
+                    break
+                await asyncio.sleep(10)
+
+            result = await backend.collect(handle)
+            await backend.cleanup(handle)
+
+            if result.stdout:
+                try:
+                    parsed = json.loads(result.stdout)
+                    return AgentResult(
+                        success=True,
+                        structured=parsed,
+                        summary=f"Backtest complete for {asset}: CRPS={parsed.get('crps_total', '?')}",
+                    )
+                except json.JSONDecodeError:
+                    pass
+        except Exception as e:
+            # Fall through to local backtest
+            pass
+
+    # Fallback — use local backtest tool if available
+    tool_registry = ctx.get("_tool_registry")
+    if tool_registry:
+        bt_tool = tool_registry.get("backtest")
+        if bt_tool:
+            result = bt_tool.func({
+                "asset": asset,
+                "competition": competition,
+                "realized_prices": historical_prices,
+                "simulated_paths": price_paths,
+            })
+            return AgentResult(
+                success=True,
+                structured=result.metrics if hasattr(result, "metrics") else {},
+                summary=result.content if hasattr(result, "content") else str(result),
+            )
+
     return AgentResult(
-        success=True,
-        structured={"crps": 0.0, "calibration": 0.0, "sharpness": 0.0},
-        summary="Computed CRPS breakdown",
+        success=False,
+        structured={"error": "No compute backend or backtest tool available"},
+        summary=f"Could not run backtest for {asset}",
     )
 
 
