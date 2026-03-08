@@ -1,19 +1,23 @@
-# Lightweight RunPod image for Synth City (SN50) — train & validate modes.
+# Headless training worker for Synth City (SN50) on RunPod.
 #
-# Modes (set via GANGLION_MODE env var):
-#   train    — run the full pipeline: fetch prices → calibrate → simulate → backtest
-#   validate — backtest-only against pre-generated paths or a saved model checkpoint
-#   serve    — start the MCP server (SSE transport) for remote agent access
+# This container is NOT an MCP server. Ganglion tools/agents dispatch jobs
+# here via RunPodBackend. The worker:
+#   1. Boots with datasets + scoring logic baked in
+#   2. Reads a job spec from env var, mounted file, or defaults
+#   3. Runs simulate → backtest → writes results to /outputs
+#   4. Prints JSON result to stdout for collection
 #
-# Usage:
-#   docker build -f Dockerfile.runpod -t synth-city-runpod ../..
-#   docker run --gpus all -e GANGLION_MODE=train -e LLM_PROVIDER_API_KEY=... synth-city-runpod
+# Build (from repo root):
+#   docker build -f examples/synth-city/Dockerfile.runpod -t synth-city-worker .
+#
+# Run locally:
+#   docker run -e GANGLION_JOB_SPEC='{"mode":"train","assets":["BTC"],"competition":"low_freq"}' \
+#     -v ./outputs:/outputs synth-city-worker
 #
 FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
-# Install build deps and numpy/scipy for Monte Carlo simulation
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ src/
 
@@ -21,55 +25,45 @@ RUN pip install --no-cache-dir build \
     && python -m build --wheel \
     && pip install --no-cache-dir --prefix=/install dist/*.whl \
     && pip install --no-cache-dir --prefix=/install \
-        numpy>=1.24 \
-        properscoring>=0.1 \
-        httpx>=0.24 \
-        "mcp>=1.0,<2.0" \
-        "aiohttp>=3.8,<4.0"
+        "numpy>=1.24" \
+        "properscoring>=0.1"
 
 
 FROM python:3.11-slim
 
-# Security: non-root user
 RUN groupadd --gid 1000 ganglion \
     && useradd --uid 1000 --gid ganglion --shell /bin/sh --create-home ganglion
 
 COPY --from=builder /install /usr/local
 
-# Copy the synth-city project
+# Bake in the synth-city tools + agent definitions (scoring constants, etc.)
 COPY examples/synth-city /app/project
 
-# Copy the entrypoint handler
+# Bake in the training handler
 COPY examples/synth-city/handler.py /app/handler.py
+
+# Datasets directory — mount or COPY historical price .npy files here
+# Expected naming: {ASSET}_{competition}_prices.npy  (e.g. BTC_low_freq_prices.npy)
+RUN mkdir -p /app/datasets /app/checkpoints /outputs \
+    && chown -R ganglion:ganglion /app /outputs
 
 WORKDIR /app
 
-# Ensure ganglion is importable
-RUN python -c "import ganglion"
+RUN python -c "import ganglion; import numpy; import properscoring"
 
 USER ganglion
 
-# ── Configuration via environment ──────────────────────────
-# GANGLION_MODE: train | validate | serve
+# ── Configuration ─────────────────────────────────────────
+# Job spec: JSON string passed by RunPodBackend via dockerArgs
+ENV GANGLION_JOB_SPEC=""
+# Fallback env vars (used if GANGLION_JOB_SPEC is empty)
 ENV GANGLION_MODE=train
-# Assets to process (comma-separated). Empty = all assets for the competition.
 ENV GANGLION_ASSETS=""
-# Competition type: low_freq | high_freq | both
 ENV GANGLION_COMPETITION=low_freq
-# Number of Monte Carlo simulations per asset
 ENV GANGLION_NUM_SIMULATIONS=1000
-# Model checkpoint dir (for validate mode with saved paths)
 ENV GANGLION_CHECKPOINT_DIR=/app/checkpoints
-# MCP server token (for serve mode)
-ENV GANGLION_MCP_TOKEN=""
-# LLM key — only needed if pipeline uses agent stages
-ENV LLM_PROVIDER_API_KEY=""
-ENV LLM_PROVIDER_BASE_URL=""
-# Output directory for results
-ENV GANGLION_OUTPUT_DIR=/app/outputs
+ENV GANGLION_OUTPUT_DIR=/outputs
 
 ENV PYTHONUNBUFFERED=1
-
-EXPOSE 8900
 
 ENTRYPOINT ["python", "/app/handler.py"]
