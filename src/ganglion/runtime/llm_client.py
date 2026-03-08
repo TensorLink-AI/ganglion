@@ -62,7 +62,7 @@ class LLMClient:
         if tools:
             request_kwargs["tools"] = tools
 
-        last_error = None
+        last_error: Exception = RuntimeError("LLM request failed with no retries")
         for attempt in range(self.max_retries + 1):
             try:
                 start = time.monotonic()
@@ -102,10 +102,12 @@ class LLMClient:
                 else:
                     raise
 
-        raise last_error  # type: ignore[misc]
+        raise last_error
 
     def _parse_response(self, response: Any) -> dict[str, Any]:
         """Parse the OpenAI response into a standardized dict."""
+        if not response.choices:
+            raise ValueError("LLM returned an empty choices list")
         choice = response.choices[0]
         message = choice.message
 
