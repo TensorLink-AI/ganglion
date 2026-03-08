@@ -3,16 +3,21 @@
 # This container is NOT an MCP server. Ganglion tools/agents dispatch jobs
 # here via RunPodBackend. The worker:
 #   1. Boots with datasets + scoring logic baked in
-#   2. Reads a job spec from env var, mounted file, or defaults
-#   3. Runs simulate → backtest → writes results to /outputs
-#   4. Prints JSON result to stdout for collection
+#   2. Reads a job spec (built-in mode or agent-submitted script)
+#   3. Runs train / validate / backtest, or arbitrary agent code
+#   4. Uploads results to Hippius (if configured) for crash-safe retrieval
+#   5. Prints JSON result to stdout for RunPodBackend.collect()
 #
 # Build (from repo root):
 #   docker build -f examples/synth-city/Dockerfile.runpod -t synth-city-worker .
 #
-# Run locally:
-#   docker run -e GANGLION_JOB_SPEC='{"mode":"train","assets":["BTC"],"competition":"low_freq"}' \
+# Run locally (built-in mode):
+#   docker run -e GANGLION_JOB_SPEC='{"mode":"train","assets":["BTC"]}' \
 #     -v ./outputs:/outputs synth-city-worker
+#
+# Run locally (script mode):
+#   docker run -e GANGLION_JOB_SPEC='{"script":"from synth_runtime import *\nprint(list_datasets())"}' \
+#     synth-city-worker
 #
 FROM python:3.11-slim AS builder
 
@@ -63,6 +68,15 @@ ENV GANGLION_COMPETITION=low_freq
 ENV GANGLION_NUM_SIMULATIONS=1000
 ENV GANGLION_CHECKPOINT_DIR=/app/checkpoints
 ENV GANGLION_OUTPUT_DIR=/outputs
+# Script timeout (seconds) — max time an agent-submitted script can run
+ENV GANGLION_SCRIPT_TIMEOUT=1800
+
+# ── Hippius (persistent result storage) ───────────────────
+# If configured, results are uploaded as they complete. The agent
+# gets a results_url to poll even if the pod crashes or times out.
+ENV HIPPIUS_API_URL=""
+ENV HIPPIUS_API_KEY=""
+ENV HIPPIUS_BUCKET=ganglion-runs
 
 ENV PYTHONUNBUFFERED=1
 
