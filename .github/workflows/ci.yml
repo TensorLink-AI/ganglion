@@ -136,7 +136,7 @@ jobs:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
         run: |
           pip install clawhub
-          clawhub publish ./skills/codebase-guide/
+          clawhub publish ./skills/ganglion/
           clawhub publish ./examples/synth-city/skill/
 
   deploy-staging:

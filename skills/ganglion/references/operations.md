@@ -90,7 +90,7 @@ curl -s "$GANGLION_URL/v1/knowledge" | jq .data.summary
 
 ### Using the Healthcheck Script
 ```bash
-bash skills/codebase-guide/scripts/healthcheck.sh
+bash skills/ganglion/scripts/healthcheck.sh
 ```
 
 ## Viewing Run History and Metrics
