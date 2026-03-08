@@ -80,8 +80,6 @@ Key libraries: numpy, properscoring, httpx/urllib
 
 import math
 
-import numpy as np
-
 from ganglion.composition.tool_registry import tool
 from ganglion.composition.tool_returns import ExperimentResult
 
@@ -107,7 +105,7 @@ def _simulate_gbm(
     time_increment: int,
     time_length: int,
     num_simulations: int,
-) -> np.ndarray:
+):
     """Geometric Brownian Motion — the SN50 baseline model.
 
     Matches the upstream implementation in synth/miner/price_simulation.py:
@@ -117,6 +115,8 @@ def _simulate_gbm(
 
     Returns an (num_simulations, num_steps+1) array of price paths.
     """
+    import numpy as np
+
     dt = time_increment / 3600
     num_steps = time_length // time_increment
     std = sigma * math.sqrt(dt)
@@ -154,6 +154,8 @@ def run_experiment(config: dict) -> ExperimentResult:
     sigma = config.get("sigma") or SIGMA_MAP.get(asset, 0.005)
 
     num_steps = time_length // time_increment
+
+    import numpy as np
 
     if model_type == "gbm":
         paths = _simulate_gbm(current_price, sigma, time_increment, time_length, num_simulations)
