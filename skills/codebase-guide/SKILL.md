@@ -230,6 +230,36 @@ Roles filter tools by category. `null` categories = access to all tools. Each ro
 #### Per-Bot Usage Tracking
 When running with `--roles`, a shared `UsageTracker` records per-bot tool calls (tool name, success/failure, timestamp, duration) to `.ganglion/usage.db`. Query via `/usage` endpoint on any SSE role.
 
+#### Connecting Other Agents to Ganglion's MCP Server
+OpenClaw and other LLM agents can start Ganglion's MCP server for themselves or for other agents to connect to. Use SSE transport for generic MCP clients that don't support stdio.
+
+```bash
+# Start Ganglion MCP server with SSE transport (any MCP client can connect)
+ganglion mcp-serve ./my-subnet --transport sse --mcp-port 8900
+
+# SSE endpoints exposed:
+#   GET  http://127.0.0.1:8900/sse         — SSE stream (tool list + results)
+#   POST http://127.0.0.1:8900/messages     — send tool calls
+#   GET  http://127.0.0.1:8900/usage        — usage stats (if tracking enabled)
+#   GET  http://127.0.0.1:8900/usage?bot_id=alpha — per-bot stats
+
+# With auth (multi-role), include bearer token:
+#   curl -H "Authorization: Bearer worker-abc" http://127.0.0.1:8902/sse
+```
+
+**For OpenClaw:** OpenClaw reads skills and invokes commands via bash/curl — it doesn't connect to MCP natively. To give OpenClaw access to Ganglion tools, use the CLI (local mode) or HTTP bridge (remote mode) documented above. OpenClaw can also *start* an MCP server so that other MCP-capable agents (Claude Desktop, Cursor, etc.) can connect:
+
+```bash
+# OpenClaw starts the MCP server for other agents
+ganglion mcp-serve ./my-subnet --transport sse --mcp-port 8900
+```
+
+**For generic MCP clients (Cursor, Windsurf, custom):** Point your client's MCP config at the SSE endpoint:
+- Server URL: `http://127.0.0.1:8900/sse`
+- Messages endpoint: `http://127.0.0.1:8900/messages`
+- Transport: SSE
+- Auth: Bearer token (if using roles)
+
 ## Common Workflows
 
 See `{baseDir}/examples/common-workflows.md` for full step-by-step guides.
