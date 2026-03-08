@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ganglion": {
+      "command": "ganglion",
+      "args": ["mcp-serve", ".", "--transport", "stdio"],
+      "env": {}
+    }
+  }
+}
