@@ -1,4 +1,4 @@
-# Ganglion: A Substrate for Autonomous Agentic Mining on Bittensor
+# Ganglion: A Substrate for Autonomous Agentic Mining on Bittensor.
 
 **Infrastructure for autonomous miners that research and self-improve.**
 
