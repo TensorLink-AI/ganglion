@@ -1,0 +1,16 @@
+[
+  {
+    "name": "openclaw-worker",
+    "token": "CHANGE-ME-use-python-secrets-token_urlsafe-32",
+    "port": 8900,
+    "transport": "sse",
+    "categories": ["observation", "execution", "training", "evaluation", "data"]
+  },
+  {
+    "name": "monitor",
+    "token": "CHANGE-ME-monitor-token",
+    "port": 8901,
+    "transport": "sse",
+    "categories": ["observation"]
+  }
+]

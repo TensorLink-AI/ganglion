@@ -1,0 +1,75 @@
+# Lightweight RunPod image for Synth City (SN50) — train & validate modes.
+#
+# Modes (set via GANGLION_MODE env var):
+#   train    — run the full pipeline: fetch prices → calibrate → simulate → backtest
+#   validate — backtest-only against pre-generated paths or a saved model checkpoint
+#   serve    — start the MCP server (SSE transport) for remote agent access
+#
+# Usage:
+#   docker build -f Dockerfile.runpod -t synth-city-runpod ../..
+#   docker run --gpus all -e GANGLION_MODE=train -e LLM_PROVIDER_API_KEY=... synth-city-runpod
+#
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# Install build deps and numpy/scipy for Monte Carlo simulation
+COPY pyproject.toml README.md LICENSE ./
+COPY src/ src/
+
+RUN pip install --no-cache-dir build \
+    && python -m build --wheel \
+    && pip install --no-cache-dir --prefix=/install dist/*.whl \
+    && pip install --no-cache-dir --prefix=/install \
+        numpy>=1.24 \
+        properscoring>=0.1 \
+        httpx>=0.24 \
+        "mcp>=1.0,<2.0" \
+        "aiohttp>=3.8,<4.0"
+
+
+FROM python:3.11-slim
+
+# Security: non-root user
+RUN groupadd --gid 1000 ganglion \
+    && useradd --uid 1000 --gid ganglion --shell /bin/sh --create-home ganglion
+
+COPY --from=builder /install /usr/local
+
+# Copy the synth-city project
+COPY examples/synth-city /app/project
+
+# Copy the entrypoint handler
+COPY examples/synth-city/handler.py /app/handler.py
+
+WORKDIR /app
+
+# Ensure ganglion is importable
+RUN python -c "import ganglion"
+
+USER ganglion
+
+# ── Configuration via environment ──────────────────────────
+# GANGLION_MODE: train | validate | serve
+ENV GANGLION_MODE=train
+# Assets to process (comma-separated). Empty = all assets for the competition.
+ENV GANGLION_ASSETS=""
+# Competition type: low_freq | high_freq | both
+ENV GANGLION_COMPETITION=low_freq
+# Number of Monte Carlo simulations per asset
+ENV GANGLION_NUM_SIMULATIONS=1000
+# Model checkpoint dir (for validate mode with saved paths)
+ENV GANGLION_CHECKPOINT_DIR=/app/checkpoints
+# MCP server token (for serve mode)
+ENV GANGLION_MCP_TOKEN=""
+# LLM key — only needed if pipeline uses agent stages
+ENV LLM_PROVIDER_API_KEY=""
+ENV LLM_PROVIDER_BASE_URL=""
+# Output directory for results
+ENV GANGLION_OUTPUT_DIR=/app/outputs
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8900
+
+ENTRYPOINT ["python", "/app/handler.py"]
