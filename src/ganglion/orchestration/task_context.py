@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from ganglion.compute.protocol import DockerPrefab
@@ -151,7 +151,7 @@ class TaskContext:
         self._data[key] = value
         self._metadata[key] = SlotMeta(
             written_by=stage,
-            written_at=datetime.utcnow(),
+            written_at=datetime.now(UTC),
             description=description,
             value_type=type(value).__name__,
         )

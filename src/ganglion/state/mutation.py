@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -14,7 +14,7 @@ class Mutation:
     mutation_type: str
     target: str
     description: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     diff: str | None = None
     rollback_data: dict[str, Any] = field(default_factory=dict)
 

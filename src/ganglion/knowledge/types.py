@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -17,7 +17,7 @@ class Pattern:
     metric_value: float | None = None
     metric_name: str | None = None
     stage: str | None = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     run_id: str | None = None
     source_bot: str | None = None
     subnet_id: str | None = None
@@ -46,7 +46,7 @@ class Pattern:
         if isinstance(parsed_timestamp, str):
             parsed_timestamp = datetime.fromisoformat(parsed_timestamp)
         elif parsed_timestamp is None:
-            parsed_timestamp = datetime.utcnow()
+            parsed_timestamp = datetime.now(UTC)
         return cls(
             capability=data["capability"],
             description=data["description"],
@@ -72,7 +72,7 @@ class Antipattern:
     config: dict[str, Any] | None = None
     failure_mode: str | None = None
     stage: str | None = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     run_id: str | None = None
     source_bot: str | None = None
     subnet_id: str | None = None
@@ -100,7 +100,7 @@ class Antipattern:
         if isinstance(parsed_timestamp, str):
             parsed_timestamp = datetime.fromisoformat(parsed_timestamp)
         elif parsed_timestamp is None:
-            parsed_timestamp = datetime.utcnow()
+            parsed_timestamp = datetime.now(UTC)
         return cls(
             capability=data["capability"],
             error_summary=data["error_summary"],
@@ -128,7 +128,7 @@ class AgentDesignPattern:
     metric_name: str | None = None
     fingerprint: dict[str, Any] = field(default_factory=dict)
     stage: str | None = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     run_id: str | None = None
     source_bot: str | None = None
 
@@ -153,7 +153,7 @@ class AgentDesignPattern:
         if isinstance(parsed_timestamp, str):
             parsed_timestamp = datetime.fromisoformat(parsed_timestamp)
         elif parsed_timestamp is None:
-            parsed_timestamp = datetime.utcnow()
+            parsed_timestamp = datetime.now(UTC)
         return cls(
             capability=data["capability"],
             agent_class=data["agent_class"],

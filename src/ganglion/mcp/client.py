@@ -54,7 +54,10 @@ class MCPClientBridge:
             elif self.config.transport == "sse":
                 await self._connect_sse()
 
-            assert self.session is not None
+            if self.session is None:
+                raise MCPConnectionError(
+                    f"Session not established for MCP server '{self.config.name}'"
+                )
             await self.session.initialize()
             await self._discover_tools()
             return list(self._tools.values())
@@ -69,8 +72,10 @@ class MCPClientBridge:
 
     async def _connect_stdio(self) -> None:
         """Connect via stdio transport."""
-        assert self._exit_stack is not None
-        assert self.config.command is not None
+        if self._exit_stack is None:
+            raise MCPConnectionError("connect() must be called before _connect_stdio()")
+        if not self.config.command:
+            raise MCPConnectionError("command is required for stdio transport")
 
         params = StdioServerParameters(
             command=self.config.command[0],
@@ -83,7 +88,8 @@ class MCPClientBridge:
 
     async def _connect_sse(self) -> None:
         """Connect via SSE transport."""
-        assert self._exit_stack is not None
+        if self._exit_stack is None:
+            raise MCPConnectionError("connect() must be called before _connect_sse()")
 
         try:
             from mcp.client.sse import sse_client
@@ -92,14 +98,16 @@ class MCPClientBridge:
                 "SSE transport requires additional dependencies from the mcp package"
             ) from e
 
-        assert self.config.url is not None
+        if not self.config.url:
+            raise MCPConnectionError("url is required for SSE transport")
         transport = await self._exit_stack.enter_async_context(sse_client(self.config.url))
         read, write = transport
         self.session = await self._exit_stack.enter_async_context(ClientSession(read, write))
 
     async def _discover_tools(self) -> None:
         """List tools from the MCP server and create ToolDef wrappers."""
-        assert self.session is not None
+        if self.session is None:
+            raise MCPConnectionError("No active session — call connect() first")
         result = await self.session.list_tools()
         prefix = self.config.tool_prefix or self.config.name
 
