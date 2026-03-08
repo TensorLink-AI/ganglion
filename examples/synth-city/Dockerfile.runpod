@@ -1,0 +1,83 @@
+# Headless training worker for Synth City (SN50) on RunPod.
+#
+# This container is NOT an MCP server. Ganglion tools/agents dispatch jobs
+# here via RunPodBackend. The worker:
+#   1. Boots with datasets + scoring logic baked in
+#   2. Reads a job spec (built-in mode or agent-submitted script)
+#   3. Runs train / validate / backtest, or arbitrary agent code
+#   4. Uploads results to Hippius (if configured) for crash-safe retrieval
+#   5. Prints JSON result to stdout for RunPodBackend.collect()
+#
+# Build (from repo root):
+#   docker build -f examples/synth-city/Dockerfile.runpod -t synth-city-worker .
+#
+# Run locally (built-in mode):
+#   docker run -e GANGLION_JOB_SPEC='{"mode":"train","assets":["BTC"]}' \
+#     -v ./outputs:/outputs synth-city-worker
+#
+# Run locally (script mode):
+#   docker run -e GANGLION_JOB_SPEC='{"script":"from synth_runtime import *\nprint(list_datasets())"}' \
+#     synth-city-worker
+#
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+COPY pyproject.toml README.md LICENSE ./
+COPY src/ src/
+
+RUN pip install --no-cache-dir build \
+    && python -m build --wheel \
+    && pip install --no-cache-dir --prefix=/install dist/*.whl \
+    && pip install --no-cache-dir --prefix=/install \
+        "numpy>=1.24" \
+        "properscoring>=0.1"
+
+
+FROM python:3.11-slim
+
+RUN groupadd --gid 1000 ganglion \
+    && useradd --uid 1000 --gid ganglion --shell /bin/sh --create-home ganglion
+
+COPY --from=builder /install /usr/local
+
+# Bake in the synth-city tools + agent definitions (scoring constants, etc.)
+COPY examples/synth-city /app/project
+
+# Bake in the training handler
+COPY examples/synth-city/handler.py /app/handler.py
+
+# Datasets directory — mount or COPY historical price .npy files here
+# Expected naming: {ASSET}_{competition}_prices.npy  (e.g. BTC_low_freq_prices.npy)
+RUN mkdir -p /app/datasets /app/checkpoints /outputs \
+    && chown -R ganglion:ganglion /app /outputs
+
+WORKDIR /app
+
+RUN python -c "import ganglion; import numpy; import properscoring"
+
+USER ganglion
+
+# ── Configuration ─────────────────────────────────────────
+# Job spec: JSON string passed by RunPodBackend via dockerArgs
+ENV GANGLION_JOB_SPEC=""
+# Fallback env vars (used if GANGLION_JOB_SPEC is empty)
+ENV GANGLION_MODE=train
+ENV GANGLION_ASSETS=""
+ENV GANGLION_COMPETITION=low_freq
+ENV GANGLION_NUM_SIMULATIONS=1000
+ENV GANGLION_CHECKPOINT_DIR=/app/checkpoints
+ENV GANGLION_OUTPUT_DIR=/outputs
+# Script timeout (seconds) — max time an agent-submitted script can run
+ENV GANGLION_SCRIPT_TIMEOUT=1800
+
+# ── Hippius (persistent result storage) ───────────────────
+# If configured, results are uploaded as they complete. The agent
+# gets a results_url to poll even if the pod crashes or times out.
+ENV HIPPIUS_API_URL=""
+ENV HIPPIUS_API_KEY=""
+ENV HIPPIUS_BUCKET=ganglion-runs
+
+ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["python", "/app/handler.py"]
