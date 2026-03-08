@@ -134,7 +134,7 @@ echo "  Failed: $FAIL"
 
 if [ "$FAIL" -gt 0 ]; then
     echo ""
-    echo "Some checks failed. See troubleshooting: skills/ganglion/references/troubleshooting.md"
+    echo "Some checks failed. See troubleshooting: skills/codebase-guide/references/troubleshooting.md"
     exit 1
 else
     echo ""
