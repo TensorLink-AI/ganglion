@@ -166,9 +166,7 @@ class MCPServerBridge:
                     )
             except Exception as e:
                 logger.error("SSE connection error: %s", e, exc_info=True)
-                error_resp = Response(
-                    f"Internal server error: {e}", status_code=500
-                )
+                error_resp = Response(f"Internal server error: {e}", status_code=500)
                 await error_resp(scope, receive, send)
 
         async def messages_app(scope: Any, receive: Any, send: Any) -> None:
@@ -181,9 +179,7 @@ class MCPServerBridge:
                 await sse.handle_post_message(scope, receive, send)
             except Exception as e:
                 logger.error("MCP message handling error: %s", e, exc_info=True)
-                error_resp = Response(
-                    f"Internal server error: {e}", status_code=500
-                )
+                error_resp = Response(f"Internal server error: {e}", status_code=500)
                 await error_resp(scope, receive, send)
 
         async def handle_usage(request: Request) -> Response:

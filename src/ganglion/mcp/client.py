@@ -169,9 +169,7 @@ class MCPClientBridge:
             except MCPToolError:
                 raise
             except Exception as e:
-                raise MCPToolError(
-                    f"MCP tool '{tool_name}' on '{server_name}' failed: {e}"
-                ) from e
+                raise MCPToolError(f"MCP tool '{tool_name}' on '{server_name}' failed: {e}") from e
 
             # Extract text content from result blocks
             text_parts = []
