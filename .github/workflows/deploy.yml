@@ -1,0 +1,77 @@
+name: Deploy
+
+# Runs after CI completes on main or release branches.
+# Using workflow_run ensures deploy jobs never appear as "skipped" in PR checks,
+# and only execute once CI has fully passed on the target branch.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main, "release/**"]
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ── Publish Skills to ClawHub ──────────────────────────────
+  publish-skills:
+    name: Publish Skills to ClawHub
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Publish skills to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          pip install clawhub
+          clawhub publish ./skills/ganglion/
+          clawhub publish ./examples/synth-city/skill/
+
+  # ── Deploy to Staging ──────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment: staging
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Deploy to staging
+        run: echo "Deploy to staging — implement with your infrastructure"
+
+      - name: Smoke tests
+        run: echo "Run smoke tests against staging — implement with your infrastructure"
+
+  # ── Deploy to Production (release branches only) ───────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success' &&
+        startsWith(github.event.workflow_run.head_branch, 'release/')
+      }}
+    environment:
+      name: production
+      # Manual approval gate
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Deploy to production
+        run: echo "Deploy to production — implement with your infrastructure"
+
+      - name: Post-deploy health check
+        run: echo "Health check — implement with your infrastructure"
