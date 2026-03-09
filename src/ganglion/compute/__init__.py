@@ -1,6 +1,6 @@
 """Ganglion compute — backend-agnostic job execution layer."""
 
-from ganglion.compute.artifacts import ArtifactStore, LocalArtifactStore
+from ganglion.compute.artifacts import ArtifactMeta, ArtifactStore, LocalArtifactStore
 from ganglion.compute.backends.registry import BackendRegistry, get_backend_registry
 from ganglion.compute.job_manager import JobManager
 from ganglion.compute.protocol import (
@@ -16,6 +16,7 @@ from ganglion.compute.protocol import (
 from ganglion.compute.router import ComputeRoute, ComputeRouter
 
 __all__ = [
+    "ArtifactMeta",
     "ArtifactStore",
     "BackendRegistry",
     "BuildBackend",

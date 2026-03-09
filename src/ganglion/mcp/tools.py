@@ -657,5 +657,173 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
         "admin",
     )
 
+    # ── Artifact tools ───────────────────────────────────────
+
+    async def ganglion_list_artifacts(
+        run_id: str | None = None,
+        experiment_id: str | None = None,
+    ) -> str:
+        """List artifacts, optionally filtered by run or experiment."""
+        if state.artifact_store is None:
+            return _json_result({"error": "No artifact store configured", "artifacts": []})
+
+        prefix = run_id or ""
+        metas = await state.artifact_store.list_meta(prefix)
+
+        # Filter by experiment_id if provided
+        if experiment_id:
+            metas = [m for m in metas if m.experiment_id == experiment_id]
+
+        return _json_result({
+            "artifacts": [m.to_dict() for m in metas],
+            "count": len(metas),
+        })
+
+    _register(
+        "ganglion_list_artifacts",
+        ganglion_list_artifacts,
+        "List artifacts from pipeline runs and experiments. Filter by run_id or experiment_id.",
+        {
+            "type": "object",
+            "properties": {
+                "run_id": {
+                    "type": "string",
+                    "description": "Filter by run ID (lists all artifacts under that run)",
+                },
+                "experiment_id": {
+                    "type": "string",
+                    "description": "Filter by experiment ID",
+                },
+            },
+        },
+        "observation",
+    )
+
+    async def ganglion_get_artifact(key: str, encoding: str = "utf-8") -> str:
+        """Retrieve a single artifact by key.
+
+        Returns the artifact content. For binary artifacts (model weights),
+        use encoding='base64'. For text artifacts (code, configs), use
+        encoding='utf-8' (default).
+        """
+        if state.artifact_store is None:
+            return _json_result({"error": "No artifact store configured"})
+
+        data = await state.artifact_store.get(key)
+        if data is None:
+            return _json_result({"error": f"Artifact '{key}' not found"})
+
+        meta = await state.artifact_store.get_meta(key)
+
+        if encoding == "base64":
+            import base64
+            content = base64.b64encode(data).decode("ascii")
+        else:
+            try:
+                content = data.decode(encoding)
+            except (UnicodeDecodeError, LookupError):
+                import base64
+                content = base64.b64encode(data).decode("ascii")
+                encoding = "base64"
+
+        result: dict[str, Any] = {
+            "key": key,
+            "encoding": encoding,
+            "size_bytes": len(data),
+            "content": content,
+        }
+        if meta:
+            result["meta"] = meta.to_dict()
+        return _json_result(result)
+
+    _register(
+        "ganglion_get_artifact",
+        ganglion_get_artifact,
+        "Retrieve a single artifact by key. Use encoding='base64' for binary (model weights), 'utf-8' for text (code, configs).",
+        {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Artifact key (typically '{run_id}/{filename}')",
+                },
+                "encoding": {
+                    "type": "string",
+                    "enum": ["utf-8", "base64"],
+                    "default": "utf-8",
+                    "description": "How to encode the content in the response",
+                },
+            },
+            "required": ["key"],
+        },
+        "observation",
+    )
+
+    async def ganglion_store_artifact(
+        key: str,
+        content: str,
+        encoding: str = "utf-8",
+        run_id: str = "",
+        experiment_id: str = "",
+        stage: str = "",
+        content_type: str = "",
+    ) -> str:
+        """Store an artifact. Bots use this to persist outputs they want to retrieve later."""
+        if state.artifact_store is None:
+            return _json_result({"error": "No artifact store configured"})
+
+        if encoding == "base64":
+            import base64
+            try:
+                data = base64.b64decode(content)
+            except Exception as e:
+                return _json_result({"error": f"Invalid base64: {e}"})
+        else:
+            data = content.encode(encoding)
+
+        await state.store_artifact(
+            key=key,
+            data=data,
+            run_id=run_id,
+            experiment_id=experiment_id,
+            stage=stage,
+            content_type=content_type,
+        )
+        return _json_result({"success": True, "key": key, "size_bytes": len(data)})
+
+    _register(
+        "ganglion_store_artifact",
+        ganglion_store_artifact,
+        "Store an artifact (code, model weights, configs). Use encoding='base64' for binary data.",
+        {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Artifact key (recommend '{run_id}/{filename}')",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Artifact content (text or base64-encoded binary)",
+                },
+                "encoding": {
+                    "type": "string",
+                    "enum": ["utf-8", "base64"],
+                    "default": "utf-8",
+                    "description": "Encoding of the content field",
+                },
+                "run_id": {"type": "string", "description": "Associated run ID"},
+                "experiment_id": {"type": "string", "description": "Associated experiment ID"},
+                "stage": {"type": "string", "description": "Pipeline stage that produced this"},
+                "content_type": {
+                    "type": "string",
+                    "description": "MIME type or descriptor (e.g. 'model/pytorch', 'text/python')",
+                },
+            },
+            "required": ["key", "content"],
+        },
+        "mutation",
+    )
+
     logger.info("Registered %d framework tools for MCP", len(registered))
     return registered
