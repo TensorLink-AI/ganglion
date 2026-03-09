@@ -159,8 +159,16 @@ class MCPServerBridge:
                 return JSONResponse(self._usage_tracker.get_bot_stats(bot_id))
             return JSONResponse(self._usage_tracker.get_all_stats())
 
+        async def handle_healthz(request: Any) -> Response:
+            return JSONResponse({"status": "ok"})
+
+        async def handle_readyz(request: Any) -> Response:
+            return JSONResponse({"status": "ready", "role": self.role})
+
         starlette_app = Starlette(
             routes=[
+                Route("/healthz", endpoint=handle_healthz),
+                Route("/readyz", endpoint=handle_readyz),
                 Route("/sse", endpoint=handle_sse),
                 Route("/messages", endpoint=handle_messages, methods=["POST"]),
                 Route("/usage", endpoint=handle_usage),
