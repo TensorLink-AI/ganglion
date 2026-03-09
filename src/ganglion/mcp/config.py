@@ -17,6 +17,7 @@ class MCPClientConfig:
     env: dict[str, str] | None = None  # extra env vars for stdio subprocess
     tool_prefix: str = ""  # prepended to tool names: "{prefix}_{name}"
     category: str = "mcp"  # ToolDef category for all tools from this server
+    token: str | None = None  # bearer token for SSE auth
     timeout: float = 30.0  # per-call timeout in seconds
 
     def validate(self) -> list[str]:
@@ -43,5 +44,6 @@ class MCPClientConfig:
             "url": self.url,
             "tool_prefix": self.tool_prefix,
             "category": self.category,
+            "token": self.token,
             "timeout": self.timeout,
         }

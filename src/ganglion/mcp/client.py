@@ -100,7 +100,12 @@ class MCPClientBridge:
 
         if not self.config.url:
             raise MCPConnectionError("url is required for SSE transport")
-        transport = await self._exit_stack.enter_async_context(sse_client(self.config.url))
+        headers = None
+        if self.config.token:
+            headers = {"Authorization": f"Bearer {self.config.token}"}
+        transport = await self._exit_stack.enter_async_context(
+            sse_client(self.config.url, headers=headers)
+        )
         read, write = transport
         self.session = await self._exit_stack.enter_async_context(ClientSession(read, write))
 
