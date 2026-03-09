@@ -119,39 +119,44 @@ class MCPServerBridge:
         import uvicorn
         from mcp.server.sse import SseServerTransport
         from starlette.applications import Starlette
+        from starlette.requests import Request
         from starlette.responses import JSONResponse, Response
-        from starlette.routing import Route
+        from starlette.routing import Mount, Route
 
         sse = SseServerTransport("/messages")
 
-        def _check_auth(request: Any) -> Response | None:
-            """Check bearer token if configured. Returns error Response or None."""
+        def _check_auth_asgi(scope: dict[str, Any]) -> Response | None:
+            """Check bearer token from ASGI scope. Returns error Response or None."""
             if not self._token:
                 return None
-            auth = request.headers.get("authorization", "")
+            headers = dict(scope.get("headers", []))
+            auth = headers.get(b"authorization", b"").decode()
             if auth != f"Bearer {self._token}":
                 return Response("Unauthorized", status_code=401)
             return None
 
-        async def handle_sse(request: Any) -> Response | None:
-            auth_error = _check_auth(request)
+        async def sse_app(scope: Any, receive: Any, send: Any) -> None:
+            """Raw ASGI app for SSE connections."""
+            auth_error = _check_auth_asgi(scope)
             if auth_error:
-                return auth_error
-            async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
+                await auth_error(scope, receive, send)
+                return
+            async with sse.connect_sse(scope, receive, send) as streams:
                 await self._server.run(
                     streams[0],
                     streams[1],
                     self._server.create_initialization_options(),
                 )
-            return None
 
-        async def handle_messages(request: Any) -> Response | None:
-            auth_error = _check_auth(request)
+        async def messages_app(scope: Any, receive: Any, send: Any) -> None:
+            """Raw ASGI app for message posting."""
+            auth_error = _check_auth_asgi(scope)
             if auth_error:
-                return auth_error
-            return await sse.handle_post_message(request)
+                await auth_error(scope, receive, send)
+                return
+            await sse.handle_post_message(scope, receive, send)
 
-        async def handle_usage(request: Any) -> Response:
+        async def handle_usage(request: Request) -> Response:
             if not self._usage_tracker:
                 return JSONResponse({"error": "Usage tracking not enabled"}, status_code=404)
             bot_id = request.query_params.get("bot_id")
@@ -159,18 +164,18 @@ class MCPServerBridge:
                 return JSONResponse(self._usage_tracker.get_bot_stats(bot_id))
             return JSONResponse(self._usage_tracker.get_all_stats())
 
-        async def handle_healthz(request: Any) -> Response:
+        async def handle_healthz(request: Request) -> Response:
             return JSONResponse({"status": "ok"})
 
-        async def handle_readyz(request: Any) -> Response:
+        async def handle_readyz(request: Request) -> Response:
             return JSONResponse({"status": "ready", "role": self.role})
 
         starlette_app = Starlette(
             routes=[
                 Route("/healthz", endpoint=handle_healthz),
                 Route("/readyz", endpoint=handle_readyz),
-                Route("/sse", endpoint=handle_sse),
-                Route("/messages", endpoint=handle_messages, methods=["POST"]),
+                Mount("/sse", app=sse_app),
+                Mount("/messages", app=messages_app),
                 Route("/usage", endpoint=handle_usage),
             ]
         )
