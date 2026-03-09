@@ -57,19 +57,32 @@ class MCPServerBridge:
         @self._server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
         async def handle_list_tools() -> list[Tool]:
             tools = []
-            for tool_dict in self._registry.list_all():
+            try:
+                tool_list = self._registry.list_all()
+            except Exception as e:
+                logger.error("Failed to list tools from registry: %s", e, exc_info=True)
+                return []
+
+            for tool_dict in tool_list:
                 # Apply category filter
                 if self._categories and tool_dict.get("category") not in self._categories:
                     continue
-                tools.append(
-                    Tool(
-                        name=tool_dict["name"],
-                        description=tool_dict.get("description", ""),
-                        inputSchema=tool_dict.get(
-                            "parameters", {"type": "object", "properties": {}}
-                        ),
+                try:
+                    tools.append(
+                        Tool(
+                            name=tool_dict["name"],
+                            description=tool_dict.get("description", ""),
+                            inputSchema=tool_dict.get(
+                                "parameters", {"type": "object", "properties": {}}
+                            ),
+                        )
                     )
-                )
+                except Exception as e:
+                    logger.warning(
+                        "Skipping tool '%s' due to schema error: %s",
+                        tool_dict.get("name", "<unknown>"),
+                        e,
+                    )
             return tools
 
         @self._server.call_tool()  # type: ignore[untyped-decorator]
@@ -104,8 +117,11 @@ class MCPServerBridge:
                 return [TextContent(type="text", text=f"Error: {e}")]
             finally:
                 if self._usage_tracker and bot_id:
-                    elapsed_ms = (time.monotonic() - start) * 1000
-                    await self._usage_tracker.record(bot_id, name, success, elapsed_ms)
+                    try:
+                        elapsed_ms = (time.monotonic() - start) * 1000
+                        await self._usage_tracker.record(bot_id, name, success, elapsed_ms)
+                    except Exception as e:
+                        logger.warning("Failed to record usage for tool '%s': %s", name, e)
 
     async def run_stdio(self) -> None:
         """Run as stdio transport MCP server."""
@@ -141,12 +157,19 @@ class MCPServerBridge:
             if auth_error:
                 await auth_error(scope, receive, send)
                 return
-            async with sse.connect_sse(scope, receive, send) as streams:
-                await self._server.run(
-                    streams[0],
-                    streams[1],
-                    self._server.create_initialization_options(),
+            try:
+                async with sse.connect_sse(scope, receive, send) as streams:
+                    await self._server.run(
+                        streams[0],
+                        streams[1],
+                        self._server.create_initialization_options(),
+                    )
+            except Exception as e:
+                logger.error("SSE connection error: %s", e, exc_info=True)
+                error_resp = Response(
+                    f"Internal server error: {e}", status_code=500
                 )
+                await error_resp(scope, receive, send)
 
         async def messages_app(scope: Any, receive: Any, send: Any) -> None:
             """Raw ASGI app for message posting."""
@@ -154,7 +177,14 @@ class MCPServerBridge:
             if auth_error:
                 await auth_error(scope, receive, send)
                 return
-            await sse.handle_post_message(scope, receive, send)
+            try:
+                await sse.handle_post_message(scope, receive, send)
+            except Exception as e:
+                logger.error("MCP message handling error: %s", e, exc_info=True)
+                error_resp = Response(
+                    f"Internal server error: {e}", status_code=500
+                )
+                await error_resp(scope, receive, send)
 
         async def handle_usage(request: Request) -> Response:
             if not self._usage_tracker:
