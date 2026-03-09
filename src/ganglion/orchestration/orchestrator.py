@@ -109,12 +109,14 @@ class PipelineOrchestrator:
         persistence: PersistenceBackend | None = None,
         knowledge: Any | None = None,
         event_handler: Callable[[PipelineEvent], None] | None = None,
+        artifact_store: Any | None = None,
     ):
         self.pipeline = pipeline
         self.agents = agents
         self.persistence = persistence
         self.knowledge = knowledge
         self.emit = event_handler or (lambda e: None)
+        self.artifact_store = artifact_store
 
     async def run(self, task: TaskContext) -> PipelineResult:
         """Execute all stages in dependency order."""
@@ -165,6 +167,11 @@ class PipelineOrchestrator:
             # Execute with retry
             stage_result = await self._execute_stage(stage_def, task)
             results[stage_def.name] = stage_result
+
+            # Persist artifacts (Rule 1: every action leaves a trace)
+            await self._store_stage_artifacts(
+                stage_def.name, stage_result, run_id=self.pipeline.name,
+            )
 
             # Persist checkpoint
             if self.persistence:
@@ -403,6 +410,43 @@ class PipelineOrchestrator:
                 )
         except Exception as e:
             logger.warning("Failed to record knowledge: %s", e)
+
+    async def _store_stage_artifacts(
+        self,
+        stage_name: str,
+        stage_result: StageResult,
+        run_id: str,
+    ) -> None:
+        """Persist any artifacts from a stage result into the artifact store.
+
+        Rule 1: Every action leaves a trace — compute outputs must be stored.
+        """
+        if self.artifact_store is None or stage_result.result is None:
+            return
+        structured = stage_result.result.structured
+        if not isinstance(structured, dict):
+            return
+        artifacts = structured.get("artifacts")
+        if not isinstance(artifacts, dict):
+            return
+        source_bot = None
+        if self.knowledge and hasattr(self.knowledge, "bot_id"):
+            source_bot = self.knowledge.bot_id
+        for filename, data in artifacts.items():
+            key = f"{run_id}/{filename}"
+            try:
+                raw = data if isinstance(data, bytes) else str(data).encode()
+                from ganglion.compute.artifacts import ArtifactMeta
+
+                meta = ArtifactMeta(
+                    key=key,
+                    run_id=run_id,
+                    stage=stage_name,
+                    source_bot=source_bot,
+                )
+                await self.artifact_store.put(key, raw, meta)
+            except Exception as e:
+                logger.warning("Failed to store artifact '%s': %s", key, e)
 
     def _extract_metric(self, result: AgentResult, task: TaskContext) -> float | None:
         """Try to extract the primary metric from the agent result."""

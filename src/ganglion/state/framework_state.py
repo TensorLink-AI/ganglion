@@ -552,18 +552,23 @@ class FrameworkState:
         experiment_id: str = "",
         stage: str = "",
         content_type: str = "",
+        source_bot: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> None:
         """Store an artifact with metadata. Key should be ``{run_id}/{filename}``."""
         if self.artifact_store is None:
             logger.warning("No artifact store configured — artifact '%s' dropped", key)
             return
+        # Auto-fill source_bot from knowledge store if not provided
+        if source_bot is None and self.knowledge and hasattr(self.knowledge, "bot_id"):
+            source_bot = self.knowledge.bot_id
         meta = ArtifactMeta(
             key=key,
             run_id=run_id,
             experiment_id=experiment_id,
             stage=stage,
             content_type=content_type,
+            source_bot=source_bot,
             labels=labels or {},
         )
         await self.artifact_store.put(key, data, meta)
@@ -727,6 +732,7 @@ class FrameworkState:
                     agents=self.agent_registry.as_dict(),
                     persistence=self.persistence,
                     knowledge=self.knowledge,
+                    artifact_store=self.artifact_store,
                 )
                 result = await orchestrator.run(task)
                 if self.persistence:
@@ -759,6 +765,7 @@ class FrameworkState:
                     agents=self.agent_registry.as_dict(),
                     persistence=self.persistence,
                     knowledge=self.knowledge,
+                    artifact_store=self.artifact_store,
                 )
                 return await orchestrator._execute_stage(stage_def, task)
             finally:

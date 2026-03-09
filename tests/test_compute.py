@@ -1420,6 +1420,30 @@ class TestLocalArtifactStoreMetadata:
         assert len(exp_a) == 1
         assert exp_a[0].key == "run-1/a.pt"
 
+    @pytest.mark.asyncio
+    async def test_source_bot_persisted_in_sidecar(self, store):
+        """source_bot field round-trips through put/get_meta."""
+        from ganglion.compute.artifacts import ArtifactMeta
+
+        meta = ArtifactMeta(
+            key="run-1/model.pt",
+            run_id="run-1",
+            source_bot="claw-bot-1",
+        )
+        await store.put("run-1/model.pt", b"weights", meta)
+
+        retrieved = await store.get_meta("run-1/model.pt")
+        assert retrieved is not None
+        assert retrieved.source_bot == "claw-bot-1"
+
+    @pytest.mark.asyncio
+    async def test_source_bot_none_by_default(self, store):
+        """source_bot defaults to None when not specified."""
+        await store.put("simple.txt", b"hello")
+        meta = await store.get_meta("simple.txt")
+        assert meta is not None
+        assert meta.source_bot is None
+
 
 # ── BuildResult tests ────────────────────────────────────────
 

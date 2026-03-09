@@ -34,6 +34,7 @@ class ArtifactMeta:
     content_type: str = ""
     size_bytes: int = 0
     created_at: float = 0.0
+    source_bot: str | None = None
     labels: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

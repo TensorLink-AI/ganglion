@@ -767,6 +767,7 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
         experiment_id: str = "",
         stage: str = "",
         content_type: str = "",
+        source_bot: str = "",
     ) -> str:
         """Store an artifact. Bots use this to persist outputs they want to retrieve later."""
         if state.artifact_store is None:
@@ -788,6 +789,7 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
             experiment_id=experiment_id,
             stage=stage,
             content_type=content_type,
+            source_bot=source_bot or None,
         )
         return _json_result({"success": True, "key": key, "size_bytes": len(data)})
 
@@ -818,6 +820,10 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
                 "content_type": {
                     "type": "string",
                     "description": "MIME type or descriptor (e.g. 'model/pytorch', 'text/python')",
+                },
+                "source_bot": {
+                    "type": "string",
+                    "description": "Bot that produced this artifact (auto-filled from knowledge store if omitted)",
                 },
             },
             "required": ["key", "content"],
