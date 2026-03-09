@@ -139,6 +139,12 @@ class MCPServerBridge:
         from starlette.responses import JSONResponse, Response
         from starlette.routing import Mount, Route
 
+        # The SseServerTransport endpoint path is combined with the ASGI
+        # root_path to build the URL clients POST messages to.  When the SSE
+        # handler is mounted at "/sse", root_path="/sse", so the client is
+        # told to POST to "/sse" + "/messages" = "/sse/messages".  We mount
+        # the messages handler at "/sse/messages" (before the "/sse" catch-all)
+        # so that Starlette routes POSTs to the correct handler.
         sse = SseServerTransport("/messages")
 
         def _check_auth_asgi(scope: dict[str, Any]) -> Response | None:
@@ -200,8 +206,10 @@ class MCPServerBridge:
             routes=[
                 Route("/healthz", endpoint=handle_healthz),
                 Route("/readyz", endpoint=handle_readyz),
+                # Messages mount MUST come before the /sse catch-all so that
+                # POST /sse/messages routes to handle_post_message, not connect_sse.
+                Mount("/sse/messages", app=messages_app),
                 Mount("/sse", app=sse_app),
-                Mount("/messages", app=messages_app),
                 Route("/usage", endpoint=handle_usage),
             ]
         )
