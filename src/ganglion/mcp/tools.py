@@ -564,6 +564,7 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
         url: str | None = None,
         tool_prefix: str = "",
         category: str = "mcp",
+        token: str | None = None,
         timeout: float = 30.0,
     ) -> str:
         """Connect to an external MCP server."""
@@ -576,6 +577,7 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
             url=url,
             tool_prefix=tool_prefix or name,
             category=category,
+            token=token,
             timeout=timeout,
         )
         result = await state.connect_mcp_server(config)
@@ -600,6 +602,7 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
                 "url": {"type": "string", "description": "URL for SSE server"},
                 "tool_prefix": {"type": "string", "description": "Prefix for tool names"},
                 "category": {"type": "string", "description": "Category for registered tools"},
+                "token": {"type": "string", "description": "Bearer token for SSE auth"},
                 "timeout": {"type": "number", "description": "Timeout in seconds", "default": 30.0},
             },
             "required": ["name"],

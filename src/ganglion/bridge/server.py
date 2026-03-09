@@ -212,6 +212,7 @@ class ConnectMCPServerRequest(BaseModel):
     env: dict[str, str] | None = None
     tool_prefix: str = Field(default="", max_length=100)
     category: str = Field(default="mcp", max_length=100)
+    token: str | None = None
     timeout: float = Field(default=30.0, gt=0)
 
 
@@ -517,6 +518,7 @@ async def connect_mcp_server(body: ConnectMCPServerRequest) -> dict[str, Any]:
         env=body.env,
         tool_prefix=body.tool_prefix or body.name,
         category=body.category,
+        token=body.token,
         timeout=body.timeout,
     )
     result = await state.connect_mcp_server(config)
