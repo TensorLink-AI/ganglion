@@ -139,15 +139,23 @@ class MCPServerBridge:
         from starlette.responses import JSONResponse, Response
         from starlette.routing import Mount, Route
 
-        # The SseServerTransport endpoint path is combined with the ASGI
-        # root_path to build the URL clients POST messages to.  When the SSE
-        # handler is mounted at "/sse", root_path="/sse", so the client is
-        # told to POST to "/sse" + "/messages" = "/sse/messages".  We mount
-        # the messages handler at "/sse/messages" (before the "/sse" catch-all)
-        # so that Starlette routes POSTs to the correct handler.
-        sse = SseServerTransport("/messages")
+        # Follow the official MCP SDK pattern (FastMCP.sse_app):
+        #  - Route("/sse") for the SSE GET endpoint (no Mount, so no root_path
+        #    prefix and no 307 trailing-slash redirect)
+        #  - Mount("/messages/") for the POST endpoint
+        #  - SseServerTransport("/messages/") so clients POST to /messages/
+        sse = SseServerTransport("/messages/")
 
-        def _check_auth_asgi(scope: dict[str, Any]) -> Response | None:
+        def _check_auth(request: Request) -> Response | None:
+            """Check bearer token. Returns error Response or None."""
+            if not self._token:
+                return None
+            auth = request.headers.get("authorization", "")
+            if auth != f"Bearer {self._token}":
+                return Response("Unauthorized", status_code=401)
+            return None
+
+        async def _check_auth_asgi(scope: dict[str, Any]) -> Response | None:
             """Check bearer token from ASGI scope. Returns error Response or None."""
             if not self._token:
                 return None
@@ -157,14 +165,17 @@ class MCPServerBridge:
                 return Response("Unauthorized", status_code=401)
             return None
 
-        async def sse_app(scope: Any, receive: Any, send: Any) -> None:
-            """Raw ASGI app for SSE connections."""
-            auth_error = _check_auth_asgi(scope)
+        async def handle_sse(request: Request) -> Response:
+            """Starlette endpoint for SSE connections."""
+            auth_error = _check_auth(request)
             if auth_error:
-                await auth_error(scope, receive, send)
-                return
+                return auth_error
             try:
-                async with sse.connect_sse(scope, receive, send) as streams:
+                async with sse.connect_sse(
+                    request.scope,
+                    request.receive,
+                    request._send,  # type: ignore[reportPrivateUsage]
+                ) as streams:
                     await self._server.run(
                         streams[0],
                         streams[1],
@@ -172,12 +183,12 @@ class MCPServerBridge:
                     )
             except Exception as e:
                 logger.error("SSE connection error: %s", e, exc_info=True)
-                error_resp = Response(f"Internal server error: {e}", status_code=500)
-                await error_resp(scope, receive, send)
+                return Response(f"Internal server error: {e}", status_code=500)
+            return Response()
 
         async def messages_app(scope: Any, receive: Any, send: Any) -> None:
             """Raw ASGI app for message posting."""
-            auth_error = _check_auth_asgi(scope)
+            auth_error = await _check_auth_asgi(scope)
             if auth_error:
                 await auth_error(scope, receive, send)
                 return
@@ -206,10 +217,8 @@ class MCPServerBridge:
             routes=[
                 Route("/healthz", endpoint=handle_healthz),
                 Route("/readyz", endpoint=handle_readyz),
-                # Messages mount MUST come before the /sse catch-all so that
-                # POST /sse/messages routes to handle_post_message, not connect_sse.
-                Mount("/sse/messages", app=messages_app),
-                Mount("/sse", app=sse_app),
+                Route("/sse", endpoint=handle_sse, methods=["GET"]),
+                Mount("/messages/", app=messages_app),
                 Route("/usage", endpoint=handle_usage),
             ]
         )
