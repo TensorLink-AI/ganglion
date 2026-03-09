@@ -165,17 +165,24 @@ class MCPServerBridge:
                 return Response("Unauthorized", status_code=401)
             return None
 
-        async def handle_sse(request: Request) -> Response:
-            """Starlette endpoint for SSE connections."""
+        async def handle_sse(scope: Any, receive: Any, send: Any) -> None:
+            """Raw ASGI app for SSE connections.
+
+            Uses raw ASGI interface instead of a Starlette endpoint to avoid
+            double-response: connect_sse already sends the HTTP response via
+            ``send``, so returning a Starlette Response would trigger
+            'Unexpected ASGI message http.response.start sent, after response
+            already completed'.
+            """
+            if scope["type"] != "http":
+                return
+            request = Request(scope, receive, send)
             auth_error = _check_auth(request)
             if auth_error:
-                return auth_error
+                await auth_error(scope, receive, send)
+                return
             try:
-                async with sse.connect_sse(
-                    request.scope,
-                    request.receive,
-                    request._send,  # type: ignore[reportPrivateUsage]
-                ) as streams:
+                async with sse.connect_sse(scope, receive, send) as streams:
                     await self._server.run(
                         streams[0],
                         streams[1],
@@ -183,8 +190,6 @@ class MCPServerBridge:
                     )
             except Exception as e:
                 logger.error("SSE connection error: %s", e, exc_info=True)
-                return Response(f"Internal server error: {e}", status_code=500)
-            return Response()
 
         async def messages_app(scope: Any, receive: Any, send: Any) -> None:
             """Raw ASGI app for message posting."""
@@ -196,8 +201,13 @@ class MCPServerBridge:
                 await sse.handle_post_message(scope, receive, send)
             except Exception as e:
                 logger.error("MCP message handling error: %s", e, exc_info=True)
-                error_resp = Response(f"Internal server error: {e}", status_code=500)
-                await error_resp(scope, receive, send)
+                try:
+                    error_resp = Response(f"Internal server error: {e}", status_code=500)
+                    await error_resp(scope, receive, send)
+                except RuntimeError:
+                    # Response was already sent before the exception —
+                    # nothing more we can do on this connection.
+                    logger.debug("Could not send error response (response already sent)")
 
         async def handle_usage(request: Request) -> Response:
             if not self._usage_tracker:
@@ -217,7 +227,7 @@ class MCPServerBridge:
             routes=[
                 Route("/healthz", endpoint=handle_healthz),
                 Route("/readyz", endpoint=handle_readyz),
-                Route("/sse", endpoint=handle_sse, methods=["GET"]),
+                Mount("/sse", app=handle_sse),
                 Mount("/messages/", app=messages_app),
                 Route("/usage", endpoint=handle_usage),
             ]
