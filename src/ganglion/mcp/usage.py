@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class UsageTracker:
@@ -24,25 +27,31 @@ class UsageTracker:
             lambda: {"total": 0, "success": 0, "failure": 0}
         )
         self._db_path = db_path
+        self._db_available = False
         if db_path:
             self._init_db()
 
     def _init_db(self) -> None:
         """Create usage_log table in SQLite."""
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
-        with sqlite3.connect(str(self._db_path)) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS usage_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    bot_id TEXT NOT NULL,
-                    tool_name TEXT NOT NULL,
-                    success INTEGER NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    duration_ms REAL
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_bot ON usage_log(bot_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_log(timestamp)")
+        try:
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
+            with sqlite3.connect(str(self._db_path)) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS usage_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        bot_id TEXT NOT NULL,
+                        tool_name TEXT NOT NULL,
+                        success INTEGER NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        duration_ms REAL
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_bot ON usage_log(bot_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_log(timestamp)")
+            self._db_available = True
+        except (sqlite3.Error, OSError) as e:
+            logger.warning("Usage tracking DB init failed, running in-memory only: %s", e)
+            self._db_available = False
 
     async def record(
         self,
@@ -56,7 +65,7 @@ class UsageTracker:
         self._bot_totals[bot_id]["total"] += 1
         self._bot_totals[bot_id]["success" if success else "failure"] += 1
 
-        if self._db_path:
+        if self._db_available:
             self._persist(bot_id, tool_name, success, duration_ms)
 
     def _persist(
@@ -67,18 +76,21 @@ class UsageTracker:
         duration_ms: float,
     ) -> None:
         """Write a single record to SQLite."""
-        with sqlite3.connect(str(self._db_path)) as conn:
-            conn.execute(
-                "INSERT INTO usage_log (bot_id, tool_name, success, timestamp, duration_ms)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (
-                    bot_id,
-                    tool_name,
-                    1 if success else 0,
-                    datetime.now(UTC).isoformat(),
-                    duration_ms,
-                ),
-            )
+        try:
+            with sqlite3.connect(str(self._db_path)) as conn:
+                conn.execute(
+                    "INSERT INTO usage_log (bot_id, tool_name, success, timestamp, duration_ms)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    (
+                        bot_id,
+                        tool_name,
+                        1 if success else 0,
+                        datetime.now(UTC).isoformat(),
+                        duration_ms,
+                    ),
+                )
+        except sqlite3.Error as e:
+            logger.warning("Failed to persist usage record: %s", e)
 
     def get_bot_stats(self, bot_id: str) -> dict[str, Any]:
         """Return usage stats for a specific bot."""
