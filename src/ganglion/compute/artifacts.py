@@ -8,6 +8,10 @@ artifacts associated with a specific run or experiment.
 Metadata is stored as a JSON sidecar (``{key}.__meta__``) alongside each
 artifact, recording the run/experiment context without changing the core
 put/get protocol.
+
+Backends:
+  - ``LocalArtifactStore`` — filesystem (default)
+  - ``S3ArtifactStore`` — S3-compatible (R2, Minio, Hippius, AWS S3)
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ class ArtifactMeta:
     size_bytes: int = 0
     created_at: float = 0.0
     source_bot: str | None = None
+    url: str | None = None
     labels: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -52,6 +57,10 @@ class ArtifactStore(Protocol):
     - Outlive the compute process
     - Be shared between pipeline stages
     - Potentially be shared between bots
+
+    Remote backends (S3, R2, Hippius) return URLs via ``get_url()``
+    so bots can retrieve artifacts directly without proxying through
+    the framework.
     """
 
     async def put(self, key: str, data: bytes, meta: ArtifactMeta | None = None) -> None: ...
@@ -59,6 +68,8 @@ class ArtifactStore(Protocol):
     async def get(self, key: str) -> bytes | None: ...
 
     async def get_meta(self, key: str) -> ArtifactMeta | None: ...
+
+    async def get_url(self, key: str) -> str | None: ...
 
     async def list(self, prefix: str = "") -> list[str]: ...
 
@@ -103,6 +114,10 @@ class LocalArtifactStore:
             return path.read_bytes()
         except OSError:
             return None
+
+    async def get_url(self, key: str) -> str | None:
+        """Local store has no URLs — returns None."""
+        return None
 
     async def get_meta(self, key: str) -> ArtifactMeta | None:
         meta_path = self._meta_path(key)

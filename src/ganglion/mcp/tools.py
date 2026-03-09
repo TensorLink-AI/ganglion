@@ -674,9 +674,19 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
         if experiment_id:
             metas = [m for m in metas if m.experiment_id == experiment_id]
 
+        # Enrich with URLs for remote stores
+        artifacts = []
+        for m in metas:
+            entry = m.to_dict()
+            if not entry.get("url"):
+                url = await state.artifact_store.get_url(m.key)
+                if url:
+                    entry["url"] = url
+            artifacts.append(entry)
+
         return _json_result({
-            "artifacts": [m.to_dict() for m in metas],
-            "count": len(metas),
+            "artifacts": artifacts,
+            "count": len(artifacts),
         })
 
     _register(
@@ -734,6 +744,10 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
         }
         if meta:
             result["meta"] = meta.to_dict()
+        # Include URL for remote stores
+        url = meta.url if meta and meta.url else await state.artifact_store.get_url(key)
+        if url:
+            result["url"] = url
         return _json_result(result)
 
     _register(
@@ -791,7 +805,11 @@ def register_framework_tools(registry: ToolRegistry, state: FrameworkState) -> l
             content_type=content_type,
             source_bot=source_bot or None,
         )
-        return _json_result({"success": True, "key": key, "size_bytes": len(data)})
+        result: dict[str, Any] = {"success": True, "key": key, "size_bytes": len(data)}
+        url = await state.artifact_store.get_url(key)
+        if url:
+            result["url"] = url
+        return _json_result(result)
 
     _register(
         "ganglion_store_artifact",

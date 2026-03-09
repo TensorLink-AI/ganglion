@@ -586,9 +586,19 @@ async def list_artifacts(
     if experiment_id:
         metas = [m for m in metas if m.experiment_id == experiment_id]
 
+    # Enrich with URLs for remote stores
+    artifacts = []
+    for m in metas:
+        entry = m.to_dict()
+        if not entry.get("url"):
+            url = await state.artifact_store.get_url(m.key)
+            if url:
+                entry["url"] = url
+        artifacts.append(entry)
+
     return _success_response({
-        "artifacts": [m.to_dict() for m in metas],
-        "count": len(metas),
+        "artifacts": artifacts,
+        "count": len(artifacts),
     })
 
 
@@ -631,6 +641,9 @@ async def get_artifact(key: str, encoding: str = "utf-8") -> dict[str, Any]:
     }
     if meta:
         result["meta"] = meta.to_dict()
+    url = (meta.url if meta and meta.url else None) or await state.artifact_store.get_url(key)
+    if url:
+        result["url"] = url
     return _success_response(result)
 
 
@@ -659,7 +672,11 @@ async def store_artifact(body: StoreArtifactRequest) -> dict[str, Any]:
         stage=body.stage,
         content_type=body.content_type,
     )
-    return _success_response({"key": body.key, "size_bytes": len(data)})
+    result: dict[str, Any] = {"key": body.key, "size_bytes": len(data)}
+    url = await state.artifact_store.get_url(body.key)
+    if url:
+        result["url"] = url
+    return _success_response(result)
 
 
 # ── Compute endpoints (v1) ─────────────────────────────────

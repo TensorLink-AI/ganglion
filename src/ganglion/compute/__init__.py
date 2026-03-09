@@ -33,3 +33,10 @@ __all__ = [
     "LocalArtifactStore",
     "get_backend_registry",
 ]
+
+
+def get_s3_artifact_store(**kwargs):
+    """Lazy import of S3ArtifactStore to avoid hard boto3 dependency."""
+    from ganglion.compute.artifacts_s3 import S3ArtifactStore
+
+    return S3ArtifactStore(**kwargs)
