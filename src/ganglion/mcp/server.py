@@ -139,11 +139,10 @@ class MCPServerBridge:
         from starlette.responses import JSONResponse, Response
         from starlette.routing import Mount, Route
 
-        # Follow the official MCP SDK pattern (FastMCP.sse_app):
-        #  - Route("/sse") for the SSE GET endpoint (no Mount, so no root_path
-        #    prefix and no 307 trailing-slash redirect)
-        #  - Mount("/messages/") for the POST endpoint
-        #  - SseServerTransport("/messages/") so clients POST to /messages/
+        # SSE endpoint is served as a raw ASGI app (connect_sse sends the HTTP
+        # response directly, so a Starlette Route would cause a double-response).
+        # We intercept /sse at the ASGI level to avoid Mount's 307 trailing-slash
+        # redirect.  Messages are still mounted via Starlette's Mount.
         sse = SseServerTransport("/messages/")
 
         def _check_auth(request: Request) -> Response | None:
@@ -227,13 +226,30 @@ class MCPServerBridge:
             routes=[
                 Route("/healthz", endpoint=handle_healthz),
                 Route("/readyz", endpoint=handle_readyz),
-                Mount("/sse", app=handle_sse),
                 Mount("/messages/", app=messages_app),
                 Route("/usage", endpoint=handle_usage),
             ]
         )
 
-        config = uvicorn.Config(starlette_app, host=host, port=port)
+        # Intercept /sse at the ASGI level to avoid Mount's 307 trailing-slash
+        # redirect.  handle_sse is a raw ASGI callable (connect_sse sends the
+        # HTTP response directly), so it cannot be wrapped in a Starlette Route.
+        inner = starlette_app
+
+        async def app_with_sse(scope: Any, receive: Any, send: Any) -> None:
+            if scope["type"] == "http" and scope.get("path", "").rstrip("/") == "/sse":
+                await handle_sse(scope, receive, send)
+            else:
+                await inner(scope, receive, send)
+
+        # Forward lifespan events so Starlette startup/shutdown hooks still fire.
+        async def asgi_app(scope: Any, receive: Any, send: Any) -> None:
+            if scope["type"] == "lifespan":
+                await inner(scope, receive, send)
+            else:
+                await app_with_sse(scope, receive, send)
+
+        config = uvicorn.Config(asgi_app, host=host, port=port)
         server = uvicorn.Server(config)
         logger.info("MCP server starting on %s:%d (SSE transport, role=%s)", host, port, self.role)
         await server.serve()
