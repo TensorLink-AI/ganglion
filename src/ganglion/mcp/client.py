@@ -115,22 +115,37 @@ class MCPClientBridge:
             raise MCPConnectionError("No active session — call connect() first")
         result = await self.session.list_tools()
         prefix = self.config.tool_prefix or self.config.name
+        skipped = 0
 
         for mcp_tool in result.tools:
-            tool_name = f"{prefix}_{mcp_tool.name}" if prefix else mcp_tool.name
+            try:
+                tool_name = f"{prefix}_{mcp_tool.name}" if prefix else mcp_tool.name
 
-            handler = self._make_handler(mcp_tool.name)
+                handler = self._make_handler(mcp_tool.name)
 
-            tool_def = ToolDef(
-                name=tool_name,
-                description=mcp_tool.description or f"MCP tool: {mcp_tool.name}",
-                func=handler,
-                parameters_schema=mcp_tool.inputSchema or {"type": "object", "properties": {}},
-                category=self.config.category,
-            )
-            self._tools[tool_name] = tool_def
+                tool_def = ToolDef(
+                    name=tool_name,
+                    description=mcp_tool.description or f"MCP tool: {mcp_tool.name}",
+                    func=handler,
+                    parameters_schema=mcp_tool.inputSchema or {"type": "object", "properties": {}},
+                    category=self.config.category,
+                )
+                self._tools[tool_name] = tool_def
+            except Exception as e:
+                skipped += 1
+                logger.warning(
+                    "MCP server '%s': skipping tool '%s' due to error: %s",
+                    self.config.name,
+                    getattr(mcp_tool, "name", "<unknown>"),
+                    e,
+                )
 
-        logger.info("MCP server '%s': discovered %d tools", self.config.name, len(self._tools))
+        logger.info(
+            "MCP server '%s': discovered %d tools%s",
+            self.config.name,
+            len(self._tools),
+            f" (skipped {skipped})" if skipped else "",
+        )
 
     def _make_handler(self, tool_name: str) -> Callable[..., Any]:
         """Create an async handler closure that calls the MCP tool."""
@@ -150,6 +165,12 @@ class MCPClientBridge:
             except TimeoutError as e:
                 raise MCPToolError(
                     f"MCP tool '{tool_name}' on '{server_name}' timed out after {timeout}s"
+                ) from e
+            except MCPToolError:
+                raise
+            except Exception as e:
+                raise MCPToolError(
+                    f"MCP tool '{tool_name}' on '{server_name}' failed: {e}"
                 ) from e
 
             # Extract text content from result blocks
