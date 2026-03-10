@@ -137,7 +137,7 @@ class MCPServerBridge:
         from starlette.applications import Starlette
         from starlette.requests import Request
         from starlette.responses import JSONResponse, Response
-        from starlette.routing import Mount, Route
+        from starlette.routing import Route
 
         sse = SseServerTransport("/messages/")
 
@@ -156,36 +156,44 @@ class MCPServerBridge:
 
         # -- SSE and message handlers are raw ASGI applications --------
         # connect_sse and handle_post_message send HTTP responses
-        # directly via the ASGI ``send`` callable.  Wrapping them in a
-        # Starlette request→Response handler would cause a duplicate
-        # response on the same connection, breaking the SSE stream.
+        # directly via the ASGI ``send`` callable.  They must NOT be
+        # wrapped in Starlette's request→Response pattern (which would
+        # double-send), and must NOT use Mount (which rewrites
+        # scope["root_path"], causing the MCP SDK to advertise a wrong
+        # messages URL to clients).
+        #
+        # Starlette's Route only treats *classes* as raw ASGI apps and
+        # wraps plain functions with request_response().  We therefore
+        # wrap each handler in a minimal ASGI class.
 
-        async def handle_sse_connection(scope: dict[str, Any], receive: Any, send: Any) -> None:
-            """SSE endpoint — raw ASGI handler."""
-            if not _check_auth_asgi(scope):
-                resp = Response("Unauthorized", status_code=401)
-                await resp(scope, receive, send)
-                return
-            try:
-                async with sse.connect_sse(scope, receive, send) as streams:
-                    await self._server.run(
-                        streams[0],
-                        streams[1],
-                        self._server.create_initialization_options(),
-                    )
-            except Exception as e:
-                logger.error("SSE connection error: %s", e, exc_info=True)
+        class _SSEApp:
+            async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+                if not _check_auth_asgi(scope):
+                    resp = Response("Unauthorized", status_code=401)
+                    await resp(scope, receive, send)
+                    return
+                try:
+                    async with sse.connect_sse(scope, receive, send) as streams:
+                        await mcp_server.run(
+                            streams[0],
+                            streams[1],
+                            mcp_server.create_initialization_options(),
+                        )
+                except Exception as e:
+                    logger.error("SSE connection error: %s", e, exc_info=True)
 
-        async def handle_messages(scope: dict[str, Any], receive: Any, send: Any) -> None:
-            """POST endpoint for MCP messages — raw ASGI handler."""
-            if not _check_auth_asgi(scope):
-                resp = Response("Unauthorized", status_code=401)
-                await resp(scope, receive, send)
-                return
-            try:
-                await sse.handle_post_message(scope, receive, send)
-            except Exception as e:
-                logger.error("MCP message handling error: %s", e, exc_info=True)
+        class _MessageApp:
+            async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+                if not _check_auth_asgi(scope):
+                    resp = Response("Unauthorized", status_code=401)
+                    await resp(scope, receive, send)
+                    return
+                try:
+                    await sse.handle_post_message(scope, receive, send)
+                except Exception as e:
+                    logger.error("MCP message handling error: %s", e, exc_info=True)
+
+        mcp_server = self._server
 
         # -- Standard request→Response endpoints -----------------------
 
@@ -203,16 +211,14 @@ class MCPServerBridge:
         async def handle_readyz(request: Request) -> Response:
             return JSONResponse({"status": "ready", "role": self.role})
 
-        # Follow the official MCP SDK pattern (FastMCP.sse_app):
-        # - /sse and /messages/ use raw ASGI handlers so the MCP SDK
-        #   controls the HTTP response directly (no double-send).
-        # - Other endpoints use normal Starlette request→Response style.
+        # Route treats class instances as raw ASGI apps — no
+        # request_response wrapping, no Mount path rewriting.
         starlette_app = Starlette(
             routes=[
                 Route("/healthz", endpoint=handle_healthz),
                 Route("/readyz", endpoint=handle_readyz),
-                Mount("/sse", app=handle_sse_connection),
-                Mount("/messages", app=handle_messages),
+                Route("/sse", endpoint=_SSEApp(), methods=["GET"]),
+                Route("/messages/", endpoint=_MessageApp(), methods=["POST"]),
                 Route("/usage", endpoint=handle_usage),
             ]
         )
