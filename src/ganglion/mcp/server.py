@@ -211,7 +211,7 @@ class MCPServerBridge:
             routes=[
                 Route("/healthz", endpoint=handle_healthz),
                 Route("/readyz", endpoint=handle_readyz),
-                Route("/sse", endpoint=handle_sse_connection),
+                Mount("/sse", app=handle_sse_connection),
                 Mount("/messages", app=handle_messages),
                 Route("/usage", endpoint=handle_usage),
             ]
