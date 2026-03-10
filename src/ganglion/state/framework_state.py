@@ -74,6 +74,10 @@ class FrameworkState:
         self._mcp_configs: list[Any] = mcp_configs or []
         self._mcp_bridges: dict[str, Any] = {}
 
+        # ACP client bridges (name -> bridge)
+        self._acp_configs: list[Any] = []
+        self._acp_bridges: dict[str, Any] = {}
+
         # Concurrency control
         self._run_lock = asyncio.Lock()
         self._mutation_lock = asyncio.Lock()
@@ -148,6 +152,7 @@ class FrameworkState:
         persistence = getattr(config_module, "persistence", None)
         knowledge = getattr(config_module, "knowledge", None)
         mcp_clients = getattr(config_module, "mcp_clients", None)
+        acp_clients = getattr(config_module, "acp_clients", None)
         compute_router = getattr(config_module, "compute_router", None)
         build_backend = getattr(config_module, "build_backend", None)
 
@@ -189,7 +194,7 @@ class FrameworkState:
                 except (ImportError, SyntaxError, OSError, AttributeError) as e:
                     logger.warning("Failed to load agent from %s: %s", py_file, e)
 
-        return cls(
+        state = cls(
             subnet_config=subnet_config,
             pipeline_def=pipeline_def,
             tool_registry=tool_registry,
@@ -201,6 +206,8 @@ class FrameworkState:
             compute_router=compute_router,
             build_backend=build_backend,
         )
+        state._acp_configs = acp_clients or []
+        return state
 
     # ── Observation methods ─────────────────────────────────
 
@@ -213,6 +220,7 @@ class FrameworkState:
             "agents": self.agent_registry.list_all(),
             "knowledge": (await self.knowledge.summary()) if self.knowledge else None,
             "mcp": self._describe_mcp(),
+            "acp": self._describe_acp(),
             "mutations": len(self.mutations),
             "running": self._is_running,
         }
@@ -647,6 +655,147 @@ class FrameworkState:
 
         await bridge.disconnect()
 
+    # ── ACP methods ─────────────────────────────────────────
+
+    async def initialize_acp(self) -> None:
+        """Connect to all statically-configured ACP servers from config.py."""
+        for config in self._acp_configs:
+            try:
+                await self._connect_acp_bridge(config)
+            except Exception as e:
+                logger.error("Failed to connect ACP server '%s': %s", config.name, e)
+
+    async def shutdown_acp(self) -> None:
+        """Disconnect from all ACP servers."""
+        for name in list(self._acp_bridges):
+            try:
+                await self._disconnect_acp_bridge(name)
+            except Exception as e:
+                logger.warning("Error disconnecting ACP server '%s': %s", name, e)
+
+    async def connect_acp_server(self, config: Any) -> MutationResult:
+        """Dynamically connect to a new ACP server and register its agents as tools."""
+        async with self._mutation_lock:
+            self._check_not_running("Cannot add ACP connections during a pipeline run")
+
+            if config.name in self._acp_bridges:
+                return MutationResult(
+                    success=False,
+                    errors=[f"ACP server '{config.name}' already connected"],
+                )
+
+            errors = config.validate()
+            if errors:
+                return MutationResult(success=False, errors=errors)
+
+            try:
+                tool_names = await self._connect_acp_bridge(config)
+            except Exception as e:
+                return MutationResult(success=False, errors=[f"Connection failed: {e}"])
+
+            self.mutations.append(
+                Mutation(
+                    mutation_type="connect_acp",
+                    target=config.name,
+                    description=(
+                        f"Connected ACP server '{config.name}', "
+                        f"registered {len(tool_names)} agent tools"
+                    ),
+                    rollback_data={"config": config.to_dict(), "tools": tool_names},
+                )
+            )
+
+            return MutationResult(success=True)
+
+    async def disconnect_acp_server(self, name: str) -> MutationResult:
+        """Disconnect from an ACP server and unregister its agent tools."""
+        async with self._mutation_lock:
+            self._check_not_running("Cannot remove ACP connections during a pipeline run")
+
+            if name not in self._acp_bridges:
+                return MutationResult(
+                    success=False, errors=[f"ACP server '{name}' not connected"]
+                )
+
+            bridge = self._acp_bridges[name]
+            tool_names = list(bridge.get_tools().keys())
+
+            try:
+                await self._disconnect_acp_bridge(name)
+            except Exception as e:
+                return MutationResult(success=False, errors=[f"Disconnect failed: {e}"])
+
+            self.mutations.append(
+                Mutation(
+                    mutation_type="disconnect_acp",
+                    target=name,
+                    description=(
+                        f"Disconnected ACP server '{name}', "
+                        f"unregistered {len(tool_names)} agent tools"
+                    ),
+                    rollback_data={"tools": tool_names},
+                )
+            )
+
+            return MutationResult(success=True)
+
+    async def _connect_acp_bridge(self, config: Any) -> list[str]:
+        """Connect to a single ACP server and register its agents as tools."""
+        from ganglion.acp.client import ACPClientBridge
+
+        bridge = ACPClientBridge(config)
+        tool_defs = await bridge.connect()
+
+        tool_names = []
+        for td in tool_defs:
+            if not self.tool_registry.has(td.name):
+                self.tool_registry.register(
+                    name=td.name,
+                    func=td.func,
+                    description=td.description,
+                    parameters_schema=td.parameters_schema,
+                    category=td.category,
+                )
+                tool_names.append(td.name)
+
+        self._acp_bridges[config.name] = bridge
+        logger.info(
+            "ACP server '%s': connected, registered %d agent tools",
+            config.name,
+            len(tool_names),
+        )
+        return tool_names
+
+    async def _disconnect_acp_bridge(self, name: str) -> None:
+        """Disconnect from a single ACP server and unregister its agent tools."""
+        bridge = self._acp_bridges.pop(name, None)
+        if bridge is None:
+            return
+
+        for tool_name in bridge.get_tools():
+            if self.tool_registry.has(tool_name):
+                self.tool_registry.unregister(tool_name)
+
+        await bridge.disconnect()
+
+    def _describe_acp(self) -> dict[str, Any]:
+        """ACP connection status snapshot."""
+        servers = []
+        for name, bridge in self._acp_bridges.items():
+            servers.append(
+                {
+                    "name": name,
+                    "connected": bridge._session is not None and not bridge._session.closed,
+                    "agents": len(bridge.get_agents()),
+                    "tools": len(bridge.get_tools()),
+                }
+            )
+        return {
+            "connected_servers": servers,
+            "total_agents": sum(len(b.get_agents()) for b in self._acp_bridges.values()),
+            "total_tools": sum(len(b.get_tools()) for b in self._acp_bridges.values()),
+        }
+
     # ── Execution methods ───────────────────────────────────
 
     async def run_pipeline(self, overrides: dict[str, Any] | None = None) -> PipelineResult:
@@ -793,6 +942,12 @@ class FrameworkState:
                     if name in self._mcp_bridges:
                         await self._disconnect_mcp_bridge(name)
                 # disconnect_mcp rollback is a no-op — we can't reconnect without config
+
+            elif mutation.mutation_type in ("connect_acp", "disconnect_acp"):
+                if mutation.mutation_type == "connect_acp":
+                    name = mutation.target
+                    if name in self._acp_bridges:
+                        await self._disconnect_acp_bridge(name)
 
             elif mutation.mutation_type == "swap_policy":
                 stage_name = mutation.rollback_data.get("stage")

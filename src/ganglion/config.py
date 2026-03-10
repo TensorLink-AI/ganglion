@@ -49,6 +49,11 @@ class GanglionConfig:
     mcp_server_transport: str = "stdio"  # "stdio" or "sse"
     mcp_server_sse_port: int = 8900
 
+    # ACP server (outbound — expose Ganglion agents via ACP)
+    acp_server_enabled: bool = False
+    acp_server_host: str = "127.0.0.1"
+    acp_server_port: int = 8950
+
     @classmethod
     def from_env(cls) -> GanglionConfig:
         """Load configuration from environment variables.
@@ -106,6 +111,9 @@ class GanglionConfig:
             mcp_server_enabled=_get("MCP_SERVER_ENABLED", "").lower() in ("1", "true", "yes"),
             mcp_server_transport=_get("MCP_SERVER_TRANSPORT", "stdio"),
             mcp_server_sse_port=_get_int("MCP_SERVER_SSE_PORT", 8900),
+            acp_server_enabled=_get("ACP_SERVER_ENABLED", "").lower() in ("1", "true", "yes"),
+            acp_server_host=_get("ACP_SERVER_HOST", "127.0.0.1"),
+            acp_server_port=_get_int("ACP_SERVER_PORT", 8950),
         )
 
     def validate(self) -> list[str]:
@@ -136,6 +144,8 @@ class GanglionConfig:
             )
         if self.mcp_server_sse_port < 1 or self.mcp_server_sse_port > 65535:
             errors.append("GANGLION_MCP_SERVER_SSE_PORT must be between 1 and 65535")
+        if self.acp_server_port < 1 or self.acp_server_port > 65535:
+            errors.append("GANGLION_ACP_SERVER_PORT must be between 1 and 65535")
 
         return errors
 

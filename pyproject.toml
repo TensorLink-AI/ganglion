@@ -20,6 +20,9 @@ dependencies = [
 mcp = [
     "mcp>=1.0,<2.0",
 ]
+acp = [
+    "aiohttp>=3.8,<4.0",
+]
 runpod = [
     "aiohttp>=3.8,<4.0",
 ]
@@ -36,6 +39,7 @@ dev = [
     "ruff==0.15.1",
     "mypy>=1.0",
     "mcp>=1.0,<2.0",
+    "aiohttp>=3.8,<4.0",
 ]
 
 [project.scripts]
@@ -74,6 +78,10 @@ warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
 module = "ganglion.mcp.server"
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = "ganglion.acp.*"
 warn_unused_ignores = false
 
 [[tool.mypy.overrides]]

@@ -171,6 +171,30 @@ def main(argv: list[str] | None = None) -> None:
         help="Path to roles JSON file for multi-role MCP serving",
     )
 
+    # ── acp-serve ────────────────────────────────────────
+    acp_serve_parser = subparsers.add_parser(
+        "acp-serve",
+        help="Expose Ganglion agents via ACP (Agent Communication Protocol)",
+    )
+    acp_serve_parser.add_argument("project_dir", help=_project_help)
+    acp_serve_parser.add_argument("--bot-id", default=None)
+    acp_serve_parser.add_argument(
+        "--host",
+        default=None,
+        help="Host to bind ACP server to (default: 127.0.0.1)",
+    )
+    acp_serve_parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Port for ACP server (default: 8950)",
+    )
+    acp_serve_parser.add_argument(
+        "--token",
+        default=None,
+        help="Bearer token required from ACP callers",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -189,6 +213,7 @@ def main(argv: list[str] | None = None) -> None:
         "pipeline": _run_pipeline,
         "run": _run_run,
         "mcp-serve": _run_mcp_serve,
+        "acp-serve": _run_acp_serve,
     }
 
     handler = commands.get(args.command)
@@ -426,6 +451,36 @@ def _run_mcp_serve(args: argparse.Namespace) -> None:
                 else:
                     await bridge.run_stdio()
         finally:
+            await state.shutdown_mcp()
+
+    _async_run(_serve())
+
+
+# ── acp-serve ─────────────────────────────────────────
+
+
+def _run_acp_serve(args: argparse.Namespace) -> None:
+    state = _load_state(args.project_dir, bot_id=getattr(args, "bot_id", None))
+
+    acp_host = args.host or "127.0.0.1"
+    acp_port = args.port or 8950
+    acp_token = getattr(args, "token", None)
+
+    async def _serve() -> None:
+        await state.initialize_mcp()
+        await state.initialize_acp()
+        try:
+            from ganglion.acp.server import ACPServerBridge
+
+            bridge = ACPServerBridge(
+                agent_registry=state.agent_registry,
+                tool_registry=state.tool_registry,
+                server_name=f"ganglion-{state.subnet_config.name}",
+                token=acp_token,
+            )
+            await bridge.run(host=acp_host, port=acp_port)
+        finally:
+            await state.shutdown_acp()
             await state.shutdown_mcp()
 
     _async_run(_serve())
