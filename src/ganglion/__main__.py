@@ -273,17 +273,29 @@ def _run_serve(args: argparse.Namespace) -> None:
     host = args.host or config.server_host
     port = args.port or config.server_port
 
+    # TLS configuration
+    ssl_kwargs: dict[str, Any] = {}
+    if config.tls_certfile and config.tls_keyfile:
+        ssl_kwargs["ssl_certfile"] = config.tls_certfile
+        ssl_kwargs["ssl_keyfile"] = config.tls_keyfile
+        scheme = "https"
+    else:
+        scheme = "http"
+
+    auth_status = "token-gated" if config.api_token else "no auth"
     logger.info(
-        "Ganglion bridge starting on %s:%d (project=%s, pipeline=%s, tools=%d, agents=%d)",
+        "Ganglion bridge starting on %s://%s:%d (%s, project=%s, pipeline=%s, tools=%d, agents=%d)",
+        scheme,
         host,
         port,
+        auth_status,
         state.project_root.resolve(),
         state.pipeline_def.name,
         len(state.tool_registry.list_all()),
         len(state.agent_registry.list_all()),
     )
 
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host=host, port=port, **ssl_kwargs)
 
 
 # ── Local-mode commands ────────────────────────────────────

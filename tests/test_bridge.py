@@ -533,3 +533,81 @@ class TestNotConfigured:
         unconfigured_client = TestClient(app)
         response = unconfigured_client.get("/v1/status")
         assert response.status_code == 503
+
+
+class TestBearerTokenAuth:
+    """Tests for bearer-token authentication on the HTTP bridge."""
+
+    @pytest.fixture
+    def authed_client(self):
+        """Client with token-gated config."""
+        mock_state = make_mock_state()
+        srv._state = mock_state
+        config = MagicMock()
+        config.api_token = "test-secret-token"
+        config.max_request_body_bytes = 10 * 1024 * 1024
+        config.rate_limit_requests_per_minute = 600
+        srv._config = config
+        return TestClient(app)
+
+    def test_request_without_token_is_rejected(self, authed_client):
+        response = authed_client.get("/v1/status")
+        assert response.status_code == 401
+        assert "WWW-Authenticate" in response.headers
+
+    def test_request_with_wrong_token_is_rejected(self, authed_client):
+        response = authed_client.get(
+            "/v1/status", headers={"Authorization": "Bearer wrong-token"}
+        )
+        assert response.status_code == 401
+
+    def test_request_with_correct_token_succeeds(self, authed_client):
+        response = authed_client.get(
+            "/v1/status", headers={"Authorization": "Bearer test-secret-token"}
+        )
+        assert response.status_code == 200
+        assert "data" in response.json()
+
+    def test_healthz_bypasses_auth(self, authed_client):
+        response = authed_client.get("/healthz")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+
+    def test_readyz_bypasses_auth(self, authed_client):
+        response = authed_client.get("/readyz")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ready"
+
+    def test_malformed_auth_header_rejected(self, authed_client):
+        response = authed_client.get(
+            "/v1/status", headers={"Authorization": "Basic dXNlcjpwYXNz"}
+        )
+        assert response.status_code == 401
+
+    def test_mutation_endpoint_requires_token(self, authed_client):
+        response = authed_client.post(
+            "/v1/tools",
+            json={"name": "t", "code": "c"},
+        )
+        assert response.status_code == 401
+
+    def test_mutation_endpoint_with_token(self, authed_client):
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.path = "/tools/t.py"
+
+        async def mock_write(*args, **kwargs):
+            return mock_result
+
+        srv._state.write_and_register_tool = mock_write
+        response = authed_client.post(
+            "/v1/tools",
+            json={"name": "t", "code": "x = 1"},
+            headers={"Authorization": "Bearer test-secret-token"},
+        )
+        assert response.status_code == 201
+
+    def test_no_auth_when_token_not_configured(self, client):
+        """When api_token is empty, all requests pass through without auth."""
+        response = client.get("/v1/status")
+        assert response.status_code == 200

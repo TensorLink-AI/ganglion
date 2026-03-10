@@ -44,6 +44,13 @@ class GanglionConfig:
     # Request limits
     max_request_body_bytes: int = 10 * 1024 * 1024  # 10MB
 
+    # Authentication
+    api_token: str = ""  # bearer token for HTTP bridge; empty = no auth
+
+    # TLS
+    tls_certfile: str = ""  # path to TLS certificate; empty = plain HTTP
+    tls_keyfile: str = ""  # path to TLS private key
+
     # MCP server (outbound — expose Ganglion tools via MCP)
     mcp_server_enabled: bool = False
     mcp_server_transport: str = "stdio"  # "stdio" or "sse"
@@ -103,6 +110,9 @@ class GanglionConfig:
             max_patterns=_get_int("MAX_PATTERNS", 500),
             max_antipatterns=_get_int("MAX_ANTIPATTERNS", 500),
             max_request_body_bytes=_get_int("MAX_REQUEST_BODY_BYTES", 10 * 1024 * 1024),
+            api_token=_get("API_TOKEN", ""),
+            tls_certfile=_get("TLS_CERTFILE", ""),
+            tls_keyfile=_get("TLS_KEYFILE", ""),
             mcp_server_enabled=_get("MCP_SERVER_ENABLED", "").lower() in ("1", "true", "yes"),
             mcp_server_transport=_get("MCP_SERVER_TRANSPORT", "stdio"),
             mcp_server_sse_port=_get_int("MCP_SERVER_SSE_PORT", 8900),
@@ -129,6 +139,10 @@ class GanglionConfig:
             )
         if self.max_request_body_bytes < 1024:
             errors.append("GANGLION_MAX_REQUEST_BODY_BYTES must be >= 1024")
+        if self.tls_certfile and not self.tls_keyfile:
+            errors.append("GANGLION_TLS_KEYFILE is required when GANGLION_TLS_CERTFILE is set")
+        if self.tls_keyfile and not self.tls_certfile:
+            errors.append("GANGLION_TLS_CERTFILE is required when GANGLION_TLS_KEYFILE is set")
         if self.mcp_server_transport not in ("stdio", "sse"):
             errors.append(
                 "GANGLION_MCP_SERVER_TRANSPORT must be 'stdio' or 'sse',"

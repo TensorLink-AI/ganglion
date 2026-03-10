@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 import time
 import uuid
@@ -28,6 +29,9 @@ app = FastAPI(
 # State is set at startup via configure()
 _state: FrameworkState | None = None
 _config: Any = None
+
+# Paths that bypass authentication (health probes must always be reachable)
+_PUBLIC_PATHS: set[str] = {"/healthz", "/readyz"}
 
 # ── Rate limiter (in-memory, per-IP) ──────────────────────
 
@@ -56,9 +60,34 @@ async def request_middleware(
     request: Request,
     call_next: Callable[[Request], Coroutine[Any, Any, Response]],
 ) -> Response:
-    """Add request ID, security headers, rate limiting, timing, and size limits."""
+    """Add request ID, security headers, auth, rate limiting, timing, and size limits."""
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
     start_time = time.monotonic()
+
+    # Bearer-token authentication (skip for health probes)
+    if (
+        _config
+        and getattr(_config, "api_token", "")
+        and request.url.path not in _PUBLIC_PATHS
+    ):
+        auth_header = request.headers.get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return Response(
+                status_code=401,
+                content="Missing or malformed Authorization header",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        provided = auth_header[7:]  # strip "Bearer "
+        if not hmac.compare_digest(provided, _config.api_token):
+            logger.warning(
+                "Authentication failed",
+                extra={"request_id": request_id, "path": request.url.path},
+            )
+            return Response(
+                status_code=401,
+                content="Invalid API token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     # Request size limit
     if _config and request.headers.get("content-length"):
