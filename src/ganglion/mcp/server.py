@@ -141,14 +141,15 @@ class MCPServerBridge:
 
         sse = SseServerTransport("/messages/")
 
-        def _check_auth_asgi(scope: dict) -> bool:
+        def _check_auth_asgi(scope: dict[str, Any]) -> bool:
             """Check bearer token from raw ASGI scope headers.
 
             Returns True if authorised (or no token required).
             """
             if not self._token:
                 return True
-            for name, value in scope.get("headers", []):
+            headers: list[tuple[bytes, bytes]] = scope.get("headers", [])
+            for name, value in headers:
                 if name == b"authorization":
                     return value.decode() == f"Bearer {self._token}"
             return False
@@ -159,7 +160,7 @@ class MCPServerBridge:
         # Starlette request→Response handler would cause a duplicate
         # response on the same connection, breaking the SSE stream.
 
-        async def handle_sse_connection(scope: dict, receive: Any, send: Any) -> None:
+        async def handle_sse_connection(scope: dict[str, Any], receive: Any, send: Any) -> None:
             """SSE endpoint — raw ASGI handler."""
             if not _check_auth_asgi(scope):
                 resp = Response("Unauthorized", status_code=401)
@@ -175,7 +176,7 @@ class MCPServerBridge:
             except Exception as e:
                 logger.error("SSE connection error: %s", e, exc_info=True)
 
-        async def handle_messages(scope: dict, receive: Any, send: Any) -> None:
+        async def handle_messages(scope: dict[str, Any], receive: Any, send: Any) -> None:
             """POST endpoint for MCP messages — raw ASGI handler."""
             if not _check_auth_asgi(scope):
                 resp = Response("Unauthorized", status_code=401)
