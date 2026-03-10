@@ -131,9 +131,18 @@ class MCPServerBridge:
             await self._server.run(read, write, self._server.create_initialization_options())
 
     async def run_sse(self, host: str = "127.0.0.1", port: int = 8900) -> None:
-        """Run as SSE transport MCP server."""
+        """Run as SSE transport MCP server.
+
+        Serves both the legacy SSE transport (``/sse`` + ``/messages/``)
+        and the newer Streamable HTTP transport (``/mcp``) so that old
+        and new MCP clients can connect to the same port.
+        """
+        import contextlib
+        from collections.abc import AsyncIterator
+
         import uvicorn
         from mcp.server.sse import SseServerTransport
+        from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
         from starlette.applications import Starlette
         from starlette.requests import Request
         from starlette.responses import JSONResponse, Response
@@ -166,6 +175,8 @@ class MCPServerBridge:
         # wraps plain functions with request_response().  We therefore
         # wrap each handler in a minimal ASGI class.
 
+        mcp_server = self._server
+
         class _SSEApp:
             async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
                 if not _check_auth_asgi(scope):
@@ -193,7 +204,27 @@ class MCPServerBridge:
                 except Exception as e:
                     logger.error("MCP message handling error: %s", e, exc_info=True)
 
-        mcp_server = self._server
+        # -- Streamable HTTP transport (MCP 2025-03-26+) ---------------
+        # Modern clients (Claude Desktop, Claude Code, etc.) POST to
+        # /mcp with JSON-RPC over Streamable HTTP instead of the legacy
+        # SSE two-endpoint pattern.  We delegate to the SDK's
+        # StreamableHTTPSessionManager which handles session lifecycle,
+        # transport creation, and server.run() orchestration.
+
+        session_manager = StreamableHTTPSessionManager(
+            app=mcp_server,
+            json_response=True,
+        )
+
+        class _StreamableApp:
+            """Delegates to StreamableHTTPSessionManager with auth."""
+
+            async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+                if not _check_auth_asgi(scope):
+                    resp = Response("Unauthorized", status_code=401)
+                    await resp(scope, receive, send)
+                    return
+                await session_manager.handle_request(scope, receive, send)
 
         # -- Standard request→Response endpoints -----------------------
 
@@ -211,6 +242,12 @@ class MCPServerBridge:
         async def handle_readyz(request: Request) -> Response:
             return JSONResponse({"status": "ready", "role": self.role})
 
+        @contextlib.asynccontextmanager
+        async def lifespan(app: Starlette) -> AsyncIterator[None]:
+            async with session_manager.run():
+                logger.info("Streamable HTTP session manager started")
+                yield
+
         # Route treats class instances as raw ASGI apps — no
         # request_response wrapping, no Mount path rewriting.
         starlette_app = Starlette(
@@ -219,8 +256,14 @@ class MCPServerBridge:
                 Route("/readyz", endpoint=handle_readyz),
                 Route("/sse", endpoint=_SSEApp(), methods=["GET"]),
                 Route("/messages/", endpoint=_MessageApp(), methods=["POST"]),
+                Route(
+                    "/mcp",
+                    endpoint=_StreamableApp(),
+                    methods=["GET", "POST", "DELETE"],
+                ),
                 Route("/usage", endpoint=handle_usage),
-            ]
+            ],
+            lifespan=lifespan,
         )
 
         config = uvicorn.Config(starlette_app, host=host, port=port)
