@@ -557,6 +557,128 @@ async def reconnect_mcp_server(name: str) -> dict[str, Any]:
     return _success_response(state._describe_mcp())
 
 
+# ── Artifact endpoints (v1) ────────────────────────────────
+
+
+class StoreArtifactRequest(BaseModel):
+    key: str = Field(..., min_length=1, max_length=500)
+    content: str = Field(..., min_length=1)
+    encoding: str = Field(default="utf-8", pattern="^(utf-8|base64)$")
+    run_id: str = Field(default="", max_length=200)
+    experiment_id: str = Field(default="", max_length=200)
+    stage: str = Field(default="", max_length=200)
+    content_type: str = Field(default="", max_length=200)
+
+
+@app.get("/v1/artifacts")
+async def list_artifacts(
+    run_id: str | None = None,
+    experiment_id: str | None = None,
+) -> dict[str, Any]:
+    """List artifacts, optionally filtered by run or experiment ID."""
+    state = _get_state()
+    if state.artifact_store is None:
+        return _success_response({"artifacts": [], "count": 0})
+
+    prefix = run_id or ""
+    metas = await state.artifact_store.list_meta(prefix)
+
+    if experiment_id:
+        metas = [m for m in metas if m.experiment_id == experiment_id]
+
+    # Enrich with URLs for remote stores
+    artifacts = []
+    for m in metas:
+        entry = m.to_dict()
+        if not entry.get("url"):
+            url = await state.artifact_store.get_url(m.key)
+            if url:
+                entry["url"] = url
+        artifacts.append(entry)
+
+    return _success_response({
+        "artifacts": artifacts,
+        "count": len(artifacts),
+    })
+
+
+@app.get("/v1/artifacts/{key:path}")
+async def get_artifact(key: str, encoding: str = "utf-8") -> dict[str, Any]:
+    """Retrieve a single artifact by key.
+
+    Use encoding=base64 for binary artifacts (model weights).
+    Use encoding=utf-8 for text artifacts (code, configs).
+    """
+    state = _get_state()
+    if state.artifact_store is None:
+        _error_response("NO_ARTIFACTS", "No artifact store configured", status_code=404)
+
+    data = await state.artifact_store.get(key)
+    if data is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "NOT_FOUND", "message": f"Artifact '{key}' not found"}},
+        )
+
+    meta = await state.artifact_store.get_meta(key)
+
+    if encoding == "base64":
+        import base64
+        content = base64.b64encode(data).decode("ascii")
+    else:
+        try:
+            content = data.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            import base64
+            content = base64.b64encode(data).decode("ascii")
+            encoding = "base64"
+
+    result: dict[str, Any] = {
+        "key": key,
+        "encoding": encoding,
+        "size_bytes": len(data),
+        "content": content,
+    }
+    if meta:
+        result["meta"] = meta.to_dict()
+    url = (meta.url if meta and meta.url else None) or await state.artifact_store.get_url(key)
+    if url:
+        result["url"] = url
+    return _success_response(result)
+
+
+@app.post("/v1/artifacts", status_code=201)
+async def store_artifact(body: StoreArtifactRequest) -> dict[str, Any]:
+    """Store an artifact."""
+    state = _get_state()
+    if state.artifact_store is None:
+        _error_response("NO_ARTIFACTS", "No artifact store configured", status_code=404)
+
+    if body.encoding == "base64":
+        import base64
+        try:
+            data = base64.b64decode(body.content)
+        except Exception:
+            _error_response("INVALID_ENCODING", "Invalid base64 content")
+            return {}  # unreachable
+    else:
+        data = body.content.encode(body.encoding)
+
+    await state.store_artifact(
+        key=body.key,
+        data=data,
+        run_id=body.run_id,
+        experiment_id=body.experiment_id,
+        stage=body.stage,
+        content_type=body.content_type,
+    )
+    result: dict[str, Any] = {"key": body.key, "size_bytes": len(data)}
+    url = await state.artifact_store.get_url(body.key)
+    if url:
+        result["url"] = url
+    return _success_response(result)
+
+
 # ── Compute endpoints (v1) ─────────────────────────────────
 
 

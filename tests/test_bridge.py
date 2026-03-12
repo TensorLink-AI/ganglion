@@ -533,3 +533,137 @@ class TestNotConfigured:
         unconfigured_client = TestClient(app)
         response = unconfigured_client.get("/v1/status")
         assert response.status_code == 503
+
+
+class TestArtifactEndpoints:
+    @pytest.fixture(autouse=True)
+    def setup_artifact_store(self):
+        """Set up a real LocalArtifactStore for artifact tests."""
+        import tempfile
+        from pathlib import Path
+
+        from ganglion.compute.artifacts import LocalArtifactStore
+
+        self.tmpdir = tempfile.mkdtemp()
+        mock_state = make_mock_state()
+        mock_state.artifact_store = LocalArtifactStore(root=Path(self.tmpdir))
+
+        async def mock_store_artifact(**kwargs):
+            from ganglion.compute.artifacts import ArtifactMeta
+
+            meta = ArtifactMeta(
+                key=kwargs["key"],
+                run_id=kwargs.get("run_id", ""),
+                experiment_id=kwargs.get("experiment_id", ""),
+                stage=kwargs.get("stage", ""),
+                content_type=kwargs.get("content_type", ""),
+            )
+            await mock_state.artifact_store.put(kwargs["key"], kwargs["data"], meta)
+
+        mock_state.store_artifact = mock_store_artifact
+        srv._state = mock_state
+        srv._config = None
+        yield
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_list_artifacts_empty(self):
+        client = TestClient(app)
+        response = client.get("/v1/artifacts")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["count"] == 0
+        assert data["artifacts"] == []
+
+    def test_store_and_list_artifacts(self):
+        client = TestClient(app)
+        # Store a text artifact
+        response = client.post(
+            "/v1/artifacts",
+            json={
+                "key": "run-1/config.json",
+                "content": '{"lr": 0.001}',
+                "run_id": "run-1",
+                "experiment_id": "exp-42",
+                "content_type": "application/json",
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["data"]["key"] == "run-1/config.json"
+
+        # List all
+        response = client.get("/v1/artifacts")
+        data = response.json()["data"]
+        assert data["count"] == 1
+        assert data["artifacts"][0]["run_id"] == "run-1"
+
+    def test_store_and_get_artifact(self):
+        client = TestClient(app)
+        client.post(
+            "/v1/artifacts",
+            json={
+                "key": "run-1/train.py",
+                "content": "print('hello')",
+                "run_id": "run-1",
+            },
+        )
+
+        response = client.get("/v1/artifacts/run-1/train.py")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["content"] == "print('hello')"
+        assert data["encoding"] == "utf-8"
+        assert data["size_bytes"] == len("print('hello')")
+
+    def test_get_artifact_not_found(self):
+        client = TestClient(app)
+        response = client.get("/v1/artifacts/nonexistent/file.txt")
+        assert response.status_code == 404
+
+    def test_store_and_get_base64_artifact(self):
+        import base64
+
+        client = TestClient(app)
+        binary_data = bytes(range(256))
+        b64 = base64.b64encode(binary_data).decode("ascii")
+
+        client.post(
+            "/v1/artifacts",
+            json={
+                "key": "run-1/model.pt",
+                "content": b64,
+                "encoding": "base64",
+                "run_id": "run-1",
+                "content_type": "model/pytorch",
+            },
+        )
+
+        response = client.get("/v1/artifacts/run-1/model.pt?encoding=base64")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["encoding"] == "base64"
+        assert base64.b64decode(data["content"]) == binary_data
+
+    def test_list_artifacts_by_run_id(self):
+        client = TestClient(app)
+        client.post(
+            "/v1/artifacts",
+            json={"key": "run-1/a.txt", "content": "a", "run_id": "run-1"},
+        )
+        client.post(
+            "/v1/artifacts",
+            json={"key": "run-2/b.txt", "content": "b", "run_id": "run-2"},
+        )
+
+        response = client.get("/v1/artifacts?run_id=run-1")
+        data = response.json()["data"]
+        assert data["count"] == 1
+        assert data["artifacts"][0]["key"] == "run-1/a.txt"
+
+    def test_list_artifacts_no_store(self):
+        srv._state.artifact_store = None
+        client = TestClient(app)
+        response = client.get("/v1/artifacts")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["count"] == 0

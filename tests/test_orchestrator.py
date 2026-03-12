@@ -345,3 +345,104 @@ class TestPipelineOrchestrator:
         assert "StageStarted" in event_types
         assert "StageCompleted" in event_types
         assert "PipelineCompleted" in event_types
+
+
+class TestOrchestratorArtifactPersistence:
+    """Rule 1: Every action leaves a trace — artifacts from stages are persisted."""
+
+    @pytest.mark.asyncio
+    async def test_artifacts_in_structured_result_are_stored(self):
+        """When a stage returns artifacts in structured output, they get stored."""
+        import tempfile
+        from pathlib import Path
+
+        from ganglion.compute.artifacts import LocalArtifactStore
+
+        with tempfile.TemporaryDirectory() as d:
+            store = LocalArtifactStore(root=Path(d))
+
+            async def produce_artifacts(task):
+                return AgentResult(
+                    success=True,
+                    raw_text="trained",
+                    structured={"artifacts": {"model.pt": b"weights", "config.json": b"{}"}},
+                )
+
+            pipeline = PipelineDef(
+                name="train-run",
+                stages=[ToolStageDef(name="train", fn=produce_artifacts)],
+            )
+            orchestrator = PipelineOrchestrator(
+                pipeline=pipeline,
+                agents={},
+                artifact_store=store,
+            )
+            result = await orchestrator.run(TaskContext(make_config()))
+            assert result.success
+
+            keys = await store.list()
+            assert len(keys) == 2
+            assert "train-run/model.pt" in keys
+            assert "train-run/config.json" in keys
+
+            meta = await store.get_meta("train-run/model.pt")
+            assert meta is not None
+            assert meta.stage == "train"
+
+    @pytest.mark.asyncio
+    async def test_no_artifacts_no_error(self):
+        """Stages without artifacts don't cause errors."""
+        async def simple_stage(task):
+            return AgentResult(success=True, raw_text="done", structured={"score": 0.9})
+
+        pipeline = PipelineDef(
+            name="test",
+            stages=[ToolStageDef(name="eval", fn=simple_stage)],
+        )
+        orchestrator = PipelineOrchestrator(
+            pipeline=pipeline,
+            agents={},
+            artifact_store=None,
+        )
+        result = await orchestrator.run(TaskContext(make_config()))
+        assert result.success
+
+    @pytest.mark.asyncio
+    async def test_source_bot_from_knowledge(self):
+        """source_bot is pulled from knowledge.bot_id into artifact metadata."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
+        from ganglion.compute.artifacts import LocalArtifactStore
+
+        with tempfile.TemporaryDirectory() as d:
+            store = LocalArtifactStore(root=Path(d))
+            knowledge = MagicMock()
+            knowledge.bot_id = "claw-bot-42"
+            knowledge.record_success = None
+            knowledge.record_failure = None
+
+            async def produce_artifact(task):
+                return AgentResult(
+                    success=True,
+                    raw_text="done",
+                    structured={"artifacts": {"output.txt": b"result"}},
+                )
+
+            pipeline = PipelineDef(
+                name="bot-run",
+                stages=[ToolStageDef(name="generate", fn=produce_artifact)],
+            )
+            orchestrator = PipelineOrchestrator(
+                pipeline=pipeline,
+                agents={},
+                artifact_store=store,
+                knowledge=knowledge,
+            )
+            result = await orchestrator.run(TaskContext(make_config()))
+            assert result.success
+
+            meta = await store.get_meta("bot-run/output.txt")
+            assert meta is not None
+            assert meta.source_bot == "claw-bot-42"
