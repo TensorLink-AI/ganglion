@@ -48,6 +48,11 @@ _BUILTIN_BACKENDS: dict[str, _LazyBackendEntry] = {
         class_name="SSHBackend",
         config_class_name="SSHConfig",
     ),
+    "basilica": _LazyBackendEntry(
+        module="ganglion.compute.backends.basilica",
+        class_name="BasilicaBackend",
+        config_class_name="BasilicaConfig",
+    ),
 }
 
 

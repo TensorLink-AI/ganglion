@@ -26,8 +26,11 @@ runpod = [
 ssh = [
     "asyncssh>=2.13,<3.0",
 ]
+basilica = [
+    "basilica-sdk>=0.1.0",
+]
 all-backends = [
-    "ganglion[runpod,ssh]",
+    "ganglion[runpod,ssh,basilica]",
 ]
 dev = [
     "pytest>=7.0,<10.0",
@@ -45,6 +48,7 @@ ganglion = "ganglion.__main__:main"
 local = "ganglion.compute.backends.local:LocalBackend"
 runpod = "ganglion.compute.backends.runpod:RunPodBackend"
 ssh = "ganglion.compute.backends.ssh:SSHBackend"
+basilica = "ganglion.compute.backends.basilica:BasilicaBackend"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ganglion"]

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,6 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from ganglion.compute.artifacts import LocalArtifactStore
+from ganglion.compute.backends.basilica import (
+    BasilicaBackend,
+    BasilicaConfig,
+    _build_deploy_kwargs,
+    _resolve_image,
+)
 from ganglion.compute.backends.docker_build import (
     DockerBuildBackend,
     DockerBuildConfig,
@@ -1735,6 +1742,7 @@ class TestBackendRegistry:
         assert "local" in names
         assert "runpod" in names
         assert "ssh" in names
+        assert "basilica" in names
 
     def test_check_local_ok(self):
         registry = BackendRegistry()
@@ -1835,3 +1843,332 @@ class TestBackendRegistry:
         )
         with pytest.raises(ImportError, match="missing dependency"):
             registry.create("fake")
+
+
+# ── BasilicaBackend tests (mocked basilica-sdk) ─────────────
+
+
+class TestBasilicaBackend:
+    def test_config_defaults(self):
+        cfg = BasilicaConfig()
+        assert cfg.api_token is None
+        assert cfg.default_image == "python:3.11-slim"
+        assert cfg.artifacts_volume == "ganglion-artifacts"
+        assert cfg.preferred_gpu == "A100"
+        assert cfg.min_gpu_memory_gb == 16
+        assert cfg.ttl_seconds == 3600
+        assert cfg.deploy_timeout == 600
+        assert cfg.storage_mount == "/outputs"
+        assert cfg.extra_pip_packages == []
+
+    def test_name(self):
+        backend = BasilicaBackend()
+        assert backend.name == "basilica"
+
+    def test_name_custom(self):
+        backend = BasilicaBackend(name="basilica-us")
+        assert backend.name == "basilica-us"
+
+    def test_import_error(self):
+        backend = BasilicaBackend()
+        with (
+            patch.dict("sys.modules", {"basilica": None}),
+            pytest.raises(ImportError, match="basilica-sdk"),
+        ):
+            backend._ensure_client()
+
+    def test_resolve_image_passthrough(self):
+        assert _resolve_image("pytorch/pytorch:2.1.0", "default:img") == "pytorch/pytorch:2.1.0"
+        assert _resolve_image("custom:v1", "default:img") == "custom:v1"
+
+    def test_resolve_image_shorthand(self):
+        assert (
+            _resolve_image("pytorch", "default:img")
+            == "pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime"
+        )
+
+    def test_resolve_image_fallback(self):
+        assert _resolve_image("unknown-thing", "python:3.11-slim") == "python:3.11-slim"
+
+    @pytest.mark.asyncio
+    async def test_submit_success(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        mock_deployment = MagicMock()
+        mock_deployment.name = "ganglion-abc123"
+        mock_deployment.url = "https://ganglion-abc123.basilica.dev"
+
+        mock_client = MagicMock()
+        mock_client.deploy = MagicMock(return_value=mock_deployment)
+        backend._client = mock_client
+
+        spec = JobSpec(
+            image="pytorch/pytorch:2.1.0",
+            command=["python", "train.py"],
+            gpu_type="A100",
+            gpu_count=1,
+        )
+        handle = await backend.submit(spec)
+        assert handle.status == JobStatus.PROVISIONING
+        assert handle.backend_name == "basilica"
+        assert handle.job_id.startswith("basilica-")
+        assert "deployment_name" in handle.metadata
+        assert "submitted_at" in handle.metadata
+        mock_client.deploy.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_submit_deploy_failure(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        mock_client = MagicMock()
+        mock_client.deploy = MagicMock(side_effect=RuntimeError("GPU unavailable"))
+        backend._client = mock_client
+
+        spec = JobSpec(image="train:v1", command=["python", "train.py"])
+        handle = await backend.submit(spec)
+        assert handle.status == JobStatus.FAILED
+        assert "error" in handle.metadata
+        assert "GPU unavailable" in handle.metadata["error"]
+
+    @pytest.mark.asyncio
+    async def test_poll_running(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        mock_status = SimpleNamespace(state="running", is_failed=False)
+        mock_deployment = MagicMock()
+        mock_deployment.status = MagicMock(return_value=mock_status)
+
+        mock_client = MagicMock()
+        mock_client.get = MagicMock(return_value=mock_deployment)
+        backend._client = mock_client
+
+        handle = JobHandle(
+            job_id="basilica-test",
+            backend_name="basilica",
+            status=JobStatus.PROVISIONING,
+            metadata={"deployment_name": "ganglion-abc", "submitted_at": time.time()},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_poll_failed(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        mock_status = SimpleNamespace(state="running", is_failed=True)
+        mock_deployment = MagicMock()
+        mock_deployment.status = MagicMock(return_value=mock_status)
+
+        mock_client = MagicMock()
+        mock_client.get = MagicMock(return_value=mock_deployment)
+        backend._client = mock_client
+
+        handle = JobHandle(
+            job_id="basilica-test",
+            backend_name="basilica",
+            status=JobStatus.PROVISIONING,
+            metadata={"deployment_name": "ganglion-abc", "submitted_at": time.time()},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_poll_already_terminal(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        mock_client = MagicMock()
+        backend._client = mock_client
+
+        handle = JobHandle(
+            job_id="basilica-test",
+            backend_name="basilica",
+            status=JobStatus.SUCCEEDED,
+            metadata={"deployment_name": "ganglion-abc"},
+        )
+        result = await backend.poll(handle)
+        assert result.status == JobStatus.SUCCEEDED
+        mock_client.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_poll_timeout(self):
+        cfg = BasilicaConfig(deploy_timeout=60)
+        backend = BasilicaBackend(cfg)
+
+        mock_client = MagicMock()
+        mock_client.get = MagicMock(side_effect=Exception("connection error"))
+        backend._client = mock_client
+
+        handle = JobHandle(
+            job_id="basilica-test",
+            backend_name="basilica",
+            status=JobStatus.PROVISIONING,
+            metadata={
+                "deployment_name": "ganglion-abc",
+                "submitted_at": time.time() - 120,  # 120s ago, exceeds 60s timeout
+            },
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.TIMEOUT
+
+    @pytest.mark.asyncio
+    async def test_poll_missing_deployment_name(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        handle = JobHandle(
+            job_id="basilica-test",
+            backend_name="basilica",
+            status=JobStatus.PROVISIONING,
+            metadata={},
+        )
+        handle = await backend.poll(handle)
+        assert handle.status == JobStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_cancel(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        mock_deployment = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = MagicMock(return_value=mock_deployment)
+        backend._client = mock_client
+
+        handle = JobHandle(
+            job_id="basilica-test",
+            backend_name="basilica",
+            status=JobStatus.RUNNING,
+            metadata={"deployment_name": "ganglion-abc"},
+        )
+        await backend.cancel(handle)
+        assert handle.status == JobStatus.CANCELLED
+        mock_deployment.delete.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cancel_error_handled(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        mock_client = MagicMock()
+        mock_client.get = MagicMock(side_effect=Exception("not found"))
+        backend._client = mock_client
+
+        handle = JobHandle(
+            job_id="basilica-test",
+            backend_name="basilica",
+            status=JobStatus.RUNNING,
+            metadata={"deployment_name": "ganglion-abc"},
+        )
+        # Should not raise
+        await backend.cancel(handle)
+        assert handle.status == JobStatus.CANCELLED
+
+    @pytest.mark.asyncio
+    async def test_collect_with_logs(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        mock_deployment = MagicMock()
+        mock_deployment.logs = MagicMock(return_value="training complete\nloss=0.01")
+
+        mock_client = MagicMock()
+        mock_client.get = MagicMock(return_value=mock_deployment)
+        backend._client = mock_client
+
+        handle = JobHandle(
+            job_id="basilica-test",
+            backend_name="basilica",
+            status=JobStatus.SUCCEEDED,
+            metadata={"deployment_name": "ganglion-abc"},
+        )
+        result = await backend.collect(handle)
+        assert result.job_id == "basilica-test"
+        assert "training complete" in result.stdout
+        assert "loss=0.01" in result.stdout
+
+    @pytest.mark.asyncio
+    async def test_collect_with_error_metadata(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        mock_deployment = MagicMock()
+        mock_deployment.logs = MagicMock(return_value="")
+
+        mock_client = MagicMock()
+        mock_client.get = MagicMock(return_value=mock_deployment)
+        backend._client = mock_client
+
+        handle = JobHandle(
+            job_id="basilica-test",
+            backend_name="basilica",
+            status=JobStatus.FAILED,
+            metadata={"deployment_name": "ganglion-abc", "error": "GPU unavailable"},
+        )
+        result = await backend.collect(handle)
+        assert "GPU unavailable" in result.stderr
+
+    @pytest.mark.asyncio
+    async def test_cleanup_delegates_to_cancel(self):
+        cfg = BasilicaConfig()
+        backend = BasilicaBackend(cfg)
+
+        mock_deployment = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get = MagicMock(return_value=mock_deployment)
+        backend._client = mock_client
+
+        handle = JobHandle(
+            job_id="basilica-test",
+            backend_name="basilica",
+            status=JobStatus.SUCCEEDED,
+            metadata={"deployment_name": "ganglion-abc"},
+        )
+        await backend.cleanup(handle)
+        assert handle.status == JobStatus.CANCELLED
+        mock_deployment.delete.assert_called_once()
+
+    def test_build_deploy_kwargs_cpu_only(self):
+        spec = JobSpec(
+            image="python:3.11",
+            command=["python", "script.py"],
+            cpu_cores=2,
+            memory_gb=8,
+        )
+        cfg = BasilicaConfig()
+        kwargs = _build_deploy_kwargs(spec, cfg, "test-deploy", "print('hi')")
+        assert "gpu_count" not in kwargs
+        assert "gpu_models" not in kwargs
+        assert kwargs["cpu"] == "2000m"
+        assert kwargs["memory"] == "8Gi"
+
+    def test_build_deploy_kwargs_with_gpu(self):
+        spec = JobSpec(
+            image="pytorch/pytorch:2.1.0",
+            command=["python", "train.py"],
+            gpu_type="H100",
+            gpu_count=1,
+            cpu_cores=4,
+            memory_gb=32,
+        )
+        cfg = BasilicaConfig()
+        kwargs = _build_deploy_kwargs(spec, cfg, "test-deploy", "print('hi')")
+        assert kwargs["gpu_count"] == 1
+        assert kwargs["gpu_models"] == ["H100"]
+        assert kwargs["min_gpu_memory_gb"] == 16
+
+    def test_build_deploy_kwargs_memory_conversion(self):
+        spec = JobSpec(image="test:v1", command=["echo"], memory_gb=16)
+        cfg = BasilicaConfig()
+        kwargs = _build_deploy_kwargs(spec, cfg, "test-deploy", "print('hi')")
+        assert kwargs["memory"] == "16Gi"
+
+    def test_build_deploy_kwargs_cpu_conversion(self):
+        spec = JobSpec(image="test:v1", command=["echo"], cpu_cores=4)
+        cfg = BasilicaConfig()
+        kwargs = _build_deploy_kwargs(spec, cfg, "test-deploy", "print('hi')")
+        assert kwargs["cpu"] == "4000m"
