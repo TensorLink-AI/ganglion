@@ -9,6 +9,11 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+from dotenv import load_dotenv
+
+# Load .env file (if present) so env vars are available before from_env() runs.
+load_dotenv()
+
 
 @dataclass(frozen=True)
 class GanglionConfig:
