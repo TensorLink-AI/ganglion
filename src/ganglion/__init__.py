@@ -1,3 +1,3 @@
-"""Ganglion — Domain-specific execution engine for Bittensor subnet mining."""
+"""Ganglion — agent memory that learns."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

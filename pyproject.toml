@@ -4,51 +4,19 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ganglion"
-version = "0.1.0"
-description = "Domain-specific execution engine for Bittensor subnet mining"
+version = "0.2.0"
+description = "Biological memory primitives for agents"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-dependencies = [
-    "openai>=1.0,<3.0",
-    "fastapi>=0.100,<1.0",
-    "uvicorn>=0.20,<1.0",
-    "pydantic>=2.0,<3.0",
-]
+dependencies = []
 
 [project.optional-dependencies]
-mcp = [
-    "mcp>=1.0,<2.0",
-]
-runpod = [
-    "aiohttp>=3.8,<4.0",
-]
-ssh = [
-    "asyncssh>=2.13,<3.0",
-]
-basilica = [
-    "basilica-sdk>=0.1.0",
-]
-all-backends = [
-    "ganglion[runpod,ssh,basilica]",
-]
 dev = [
     "pytest>=7.0,<10.0",
     "pytest-asyncio>=0.21,<2.0",
-    "pytest-cov>=4.0,<8.0",
-    "ruff==0.15.1",
-    "mypy>=1.0",
-    "mcp>=1.0,<2.0",
+    "ruff>=0.4",
 ]
-
-[project.scripts]
-ganglion = "ganglion.__main__:main"
-
-[project.entry-points."ganglion.compute.backends"]
-local = "ganglion.compute.backends.local:LocalBackend"
-runpod = "ganglion.compute.backends.runpod:RunPodBackend"
-ssh = "ganglion.compute.backends.ssh:SSHBackend"
-basilica = "ganglion.compute.backends.basilica:BasilicaBackend"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ganglion"]
@@ -60,36 +28,3 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "ganglion.bridge.server"
-disallow_untyped_decorators = false
-disallow_subclassing_any = false
-warn_unused_ignores = false
-
-[[tool.mypy.overrides]]
-module = "ganglion.mcp.server"
-warn_unused_ignores = false
-
-[[tool.mypy.overrides]]
-module = "ganglion.runtime.llm_client"
-warn_unused_ignores = false
-
-[tool.bandit]
-exclude_dirs = ["tests"]
-
-[tool.coverage.run]
-source = ["ganglion"]
-
-[tool.coverage.report]
-fail_under = 80
-show_missing = true
