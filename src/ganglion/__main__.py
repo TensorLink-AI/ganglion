@@ -488,6 +488,18 @@ def _run_ralph(args: argparse.Namespace) -> None:
 
     state = _load_state(args.project_dir, bot_id=args.bot_id)
 
+    # Auto-register Basilica compute backend if token is set
+    if config.basilica_token:
+        from ganglion.compute.backends.registry import get_backend_registry
+
+        try:
+            registry = get_backend_registry()
+            basilica = registry.create("basilica", api_token=config.basilica_token)
+            _async_run(state.hot_add_backend("basilica", basilica))
+            logger.info("Ralph: registered Basilica compute backend")
+        except (ImportError, ValueError) as e:
+            logger.warning("Ralph: could not register Basilica backend: %s", e)
+
     # Initialize MCP connections before starting
     _async_run(state.initialize_mcp())
 
