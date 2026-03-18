@@ -459,3 +459,96 @@ def bad_tested_tool(x: int) -> str:
         result = await state.write_and_register_tool("bad_tested_tool", code, "general", test_code)
         assert result.success is False
         assert any("Test failed" in e for e in result.errors)
+
+
+class TestArtifactSourceBot:
+    """Tests for source_bot auto-fill in store_artifact (Rule 2 compliance)."""
+
+    @pytest.mark.asyncio
+    async def test_source_bot_auto_filled_from_knowledge(self, tmp_dir):
+        """store_artifact fills source_bot from knowledge.bot_id."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ganglion.compute.artifacts import LocalArtifactStore
+
+        store = LocalArtifactStore(root=tmp_dir / "artifacts")
+        knowledge = MagicMock()
+        knowledge.bot_id = "claw-bot-1"
+
+        fs = FrameworkState(
+            subnet_config=make_config(),
+            pipeline_def=PipelineDef(name="test", stages=[]),
+            tool_registry=ToolRegistry(),
+            agent_registry=AgentRegistry(),
+            project_root=tmp_dir,
+            knowledge=knowledge,
+            artifact_store=store,
+        )
+
+        await fs.store_artifact(
+            key="run-1/model.pt",
+            data=b"fake weights",
+            run_id="run-1",
+        )
+
+        meta = await store.get_meta("run-1/model.pt")
+        assert meta is not None
+        assert meta.source_bot == "claw-bot-1"
+
+    @pytest.mark.asyncio
+    async def test_source_bot_explicit_overrides_knowledge(self, tmp_dir):
+        """Explicit source_bot takes precedence over knowledge.bot_id."""
+        from unittest.mock import MagicMock
+
+        from ganglion.compute.artifacts import LocalArtifactStore
+
+        store = LocalArtifactStore(root=tmp_dir / "artifacts")
+        knowledge = MagicMock()
+        knowledge.bot_id = "claw-bot-1"
+
+        fs = FrameworkState(
+            subnet_config=make_config(),
+            pipeline_def=PipelineDef(name="test", stages=[]),
+            tool_registry=ToolRegistry(),
+            agent_registry=AgentRegistry(),
+            project_root=tmp_dir,
+            knowledge=knowledge,
+            artifact_store=store,
+        )
+
+        await fs.store_artifact(
+            key="run-1/model.pt",
+            data=b"fake weights",
+            run_id="run-1",
+            source_bot="other-bot",
+        )
+
+        meta = await store.get_meta("run-1/model.pt")
+        assert meta is not None
+        assert meta.source_bot == "other-bot"
+
+    @pytest.mark.asyncio
+    async def test_source_bot_none_without_knowledge(self, tmp_dir):
+        """source_bot is None when no knowledge store is configured."""
+        from ganglion.compute.artifacts import LocalArtifactStore
+
+        store = LocalArtifactStore(root=tmp_dir / "artifacts")
+
+        fs = FrameworkState(
+            subnet_config=make_config(),
+            pipeline_def=PipelineDef(name="test", stages=[]),
+            tool_registry=ToolRegistry(),
+            agent_registry=AgentRegistry(),
+            project_root=tmp_dir,
+            artifact_store=store,
+        )
+
+        await fs.store_artifact(
+            key="run-1/model.pt",
+            data=b"fake weights",
+            run_id="run-1",
+        )
+
+        meta = await store.get_meta("run-1/model.pt")
+        assert meta is not None
+        assert meta.source_bot is None

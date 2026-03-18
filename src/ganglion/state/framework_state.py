@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ganglion.compute.artifacts import ArtifactMeta, ArtifactStore, LocalArtifactStore
 from ganglion.compute.job_manager import JobManager
 from ganglion.compute.protocol import BuildBackend, ComputeBackend
 from ganglion.compute.router import ComputeRouter
@@ -53,6 +54,7 @@ class FrameworkState:
         mcp_configs: list[Any] | None = None,
         compute_router: ComputeRouter | None = None,
         build_backend: BuildBackend | None = None,
+        artifact_store: ArtifactStore | None = None,
     ):
         self.subnet_config = subnet_config
         self.pipeline_def = pipeline_def
@@ -69,6 +71,9 @@ class FrameworkState:
 
         # Image building
         self.build_backend: BuildBackend | None = build_backend
+
+        # Artifacts — task-agnostic store for run/experiment outputs
+        self.artifact_store: ArtifactStore | None = artifact_store
 
         # MCP client bridges (name -> bridge)
         self._mcp_configs: list[Any] = mcp_configs or []
@@ -90,6 +95,7 @@ class FrameworkState:
         project_root: Path | None = None,
         persistence: PersistenceBackend | None = None,
         knowledge: KnowledgeStore | None = None,
+        artifact_store: ArtifactStore | None = None,
     ) -> FrameworkState:
         """Create a new FrameworkState with empty registries."""
         return cls(
@@ -100,6 +106,7 @@ class FrameworkState:
             persistence=persistence,
             project_root=project_root,
             knowledge=knowledge,
+            artifact_store=artifact_store,
         )
 
     @classmethod
@@ -150,6 +157,11 @@ class FrameworkState:
         mcp_clients = getattr(config_module, "mcp_clients", None)
         compute_router = getattr(config_module, "compute_router", None)
         build_backend = getattr(config_module, "build_backend", None)
+        artifact_store = getattr(config_module, "artifact_store", None)
+
+        # Default: local artifact store under project root
+        if artifact_store is None:
+            artifact_store = LocalArtifactStore(root=project_root / "artifacts")
 
         # Set bot_id on knowledge store for multi-bot shared knowledge
         if knowledge is not None and bot_id is not None:
@@ -200,6 +212,7 @@ class FrameworkState:
             mcp_configs=mcp_clients,
             compute_router=compute_router,
             build_backend=build_backend,
+            artifact_store=artifact_store,
         )
 
     # ── Observation methods ─────────────────────────────────
@@ -213,6 +226,7 @@ class FrameworkState:
             "agents": self.agent_registry.list_all(),
             "knowledge": (await self.knowledge.summary()) if self.knowledge else None,
             "mcp": self._describe_mcp(),
+            "artifacts": self.artifact_store is not None,
             "mutations": len(self.mutations),
             "running": self._is_running,
         }
@@ -528,6 +542,61 @@ class FrameworkState:
             result["jobs"] = self._job_manager.status()
         return result
 
+    # ── Artifact methods ────────────────────────────────────
+
+    async def store_artifact(
+        self,
+        key: str,
+        data: bytes,
+        run_id: str = "",
+        experiment_id: str = "",
+        stage: str = "",
+        content_type: str = "",
+        source_bot: str | None = None,
+        labels: dict[str, str] | None = None,
+    ) -> None:
+        """Store an artifact with metadata. Key should be ``{run_id}/{filename}``."""
+        if self.artifact_store is None:
+            logger.warning("No artifact store configured — artifact '%s' dropped", key)
+            return
+        # Auto-fill source_bot from knowledge store if not provided
+        if source_bot is None and self.knowledge and hasattr(self.knowledge, "bot_id"):
+            source_bot = self.knowledge.bot_id
+        meta = ArtifactMeta(
+            key=key,
+            run_id=run_id,
+            experiment_id=experiment_id,
+            stage=stage,
+            content_type=content_type,
+            source_bot=source_bot,
+            labels=labels or {},
+        )
+        await self.artifact_store.put(key, data, meta)
+
+    async def store_job_artifacts(
+        self,
+        job_result: Any,
+        run_id: str,
+        stage: str = "",
+    ) -> list[str]:
+        """Persist all artifacts from a JobResult into the artifact store.
+
+        Returns list of stored artifact keys.
+        """
+        if self.artifact_store is None or not hasattr(job_result, "artifacts"):
+            return []
+        stored: list[str] = []
+        for filename, data in job_result.artifacts.items():
+            key = f"{run_id}/{filename}"
+            await self.store_artifact(
+                key=key,
+                data=data,
+                run_id=run_id,
+                stage=stage,
+            )
+            stored.append(key)
+        return stored
+
     # ── MCP methods ─────────────────────────────────────────
 
     async def initialize_mcp(self) -> None:
@@ -663,6 +732,7 @@ class FrameworkState:
                     agents=self.agent_registry.as_dict(),
                     persistence=self.persistence,
                     knowledge=self.knowledge,
+                    artifact_store=self.artifact_store,
                 )
                 result = await orchestrator.run(task)
                 if self.persistence:
@@ -695,6 +765,7 @@ class FrameworkState:
                     agents=self.agent_registry.as_dict(),
                     persistence=self.persistence,
                     knowledge=self.knowledge,
+                    artifact_store=self.artifact_store,
                 )
                 return await orchestrator._execute_stage(stage_def, task)
             finally:

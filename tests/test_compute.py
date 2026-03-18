@@ -1278,6 +1278,180 @@ class TestLocalArtifactStoreEdgeCases:
         assert store._root == Path("./artifacts")
 
 
+# ── ArtifactMeta and metadata-aware store tests ──────────────
+
+
+class TestArtifactMeta:
+    def test_to_dict_roundtrip(self):
+        from ganglion.compute.artifacts import ArtifactMeta
+
+        meta = ArtifactMeta(
+            key="run-42/model.pt",
+            run_id="run-42",
+            experiment_id="exp-7",
+            stage="train",
+            content_type="model/pytorch",
+            size_bytes=1024,
+            created_at=1700000000.0,
+            labels={"best": "true"},
+        )
+        d = meta.to_dict()
+        restored = ArtifactMeta.from_dict(d)
+        assert restored.key == meta.key
+        assert restored.run_id == meta.run_id
+        assert restored.experiment_id == meta.experiment_id
+        assert restored.labels == {"best": "true"}
+
+    def test_from_dict_ignores_extra_keys(self):
+        from ganglion.compute.artifacts import ArtifactMeta
+
+        data = {"key": "test", "run_id": "r1", "unknown_field": "ignored"}
+        meta = ArtifactMeta.from_dict(data)
+        assert meta.key == "test"
+        assert meta.run_id == "r1"
+
+
+class TestLocalArtifactStoreMetadata:
+    @pytest.fixture
+    def store(self):
+        with tempfile.TemporaryDirectory() as d:
+            yield LocalArtifactStore(root=Path(d))
+
+    @pytest.mark.asyncio
+    async def test_put_creates_meta_sidecar(self, store):
+        from ganglion.compute.artifacts import ArtifactMeta
+
+        meta = ArtifactMeta(
+            key="run-1/weights.pt",
+            run_id="run-1",
+            stage="train",
+            content_type="model/pytorch",
+        )
+        await store.put("run-1/weights.pt", b"fake weights", meta)
+
+        retrieved_meta = await store.get_meta("run-1/weights.pt")
+        assert retrieved_meta is not None
+        assert retrieved_meta.run_id == "run-1"
+        assert retrieved_meta.stage == "train"
+        assert retrieved_meta.size_bytes == len(b"fake weights")
+        assert retrieved_meta.created_at > 0
+
+    @pytest.mark.asyncio
+    async def test_put_without_meta_creates_default(self, store):
+        await store.put("simple.txt", b"hello")
+        meta = await store.get_meta("simple.txt")
+        assert meta is not None
+        assert meta.key == "simple.txt"
+        assert meta.size_bytes == 5
+
+    @pytest.mark.asyncio
+    async def test_get_meta_missing_artifact(self, store):
+        meta = await store.get_meta("nonexistent")
+        assert meta is None
+
+    @pytest.mark.asyncio
+    async def test_get_meta_no_sidecar_synthesizes(self, store):
+        """If an artifact exists but sidecar was deleted, synthesize minimal meta."""
+        await store.put("file.bin", b"data")
+        # Delete the sidecar
+        store._meta_path("file.bin").unlink()
+        meta = await store.get_meta("file.bin")
+        assert meta is not None
+        assert meta.key == "file.bin"
+        assert meta.size_bytes == 4
+
+    @pytest.mark.asyncio
+    async def test_list_excludes_meta_sidecars(self, store):
+        from ganglion.compute.artifacts import ArtifactMeta
+
+        meta = ArtifactMeta(key="run-1/model.pt", run_id="run-1")
+        await store.put("run-1/model.pt", b"data", meta)
+        await store.put("run-1/config.json", b"{}")
+
+        files = await store.list("run-1")
+        assert len(files) == 2
+        assert all(not f.endswith(".__meta__") for f in files)
+
+    @pytest.mark.asyncio
+    async def test_list_meta_returns_all_metadata(self, store):
+        from ganglion.compute.artifacts import ArtifactMeta
+
+        await store.put(
+            "run-1/model.pt",
+            b"weights",
+            ArtifactMeta(key="run-1/model.pt", run_id="run-1", experiment_id="exp-1"),
+        )
+        await store.put(
+            "run-1/config.json",
+            b"{}",
+            ArtifactMeta(key="run-1/config.json", run_id="run-1", experiment_id="exp-1"),
+        )
+        await store.put(
+            "run-2/model.pt",
+            b"other",
+            ArtifactMeta(key="run-2/model.pt", run_id="run-2", experiment_id="exp-2"),
+        )
+
+        # List all
+        all_meta = await store.list_meta()
+        assert len(all_meta) == 3
+
+        # List by run prefix
+        run1_meta = await store.list_meta("run-1")
+        assert len(run1_meta) == 2
+        assert all(m.run_id == "run-1" for m in run1_meta)
+
+    @pytest.mark.asyncio
+    async def test_delete_removes_sidecar(self, store):
+        await store.put("temp.txt", b"data")
+        assert store._meta_path("temp.txt").is_file()
+        await store.delete("temp.txt")
+        assert not store._meta_path("temp.txt").is_file()
+
+    @pytest.mark.asyncio
+    async def test_list_meta_filter_by_experiment(self, store):
+        """Verify the pattern that MCP tools use to filter by experiment_id."""
+        from ganglion.compute.artifacts import ArtifactMeta
+
+        await store.put(
+            "run-1/a.pt", b"x",
+            ArtifactMeta(key="run-1/a.pt", run_id="run-1", experiment_id="exp-A"),
+        )
+        await store.put(
+            "run-2/b.pt", b"y",
+            ArtifactMeta(key="run-2/b.pt", run_id="run-2", experiment_id="exp-B"),
+        )
+
+        all_meta = await store.list_meta()
+        exp_a = [m for m in all_meta if m.experiment_id == "exp-A"]
+        assert len(exp_a) == 1
+        assert exp_a[0].key == "run-1/a.pt"
+
+    @pytest.mark.asyncio
+    async def test_source_bot_persisted_in_sidecar(self, store):
+        """source_bot field round-trips through put/get_meta."""
+        from ganglion.compute.artifacts import ArtifactMeta
+
+        meta = ArtifactMeta(
+            key="run-1/model.pt",
+            run_id="run-1",
+            source_bot="claw-bot-1",
+        )
+        await store.put("run-1/model.pt", b"weights", meta)
+
+        retrieved = await store.get_meta("run-1/model.pt")
+        assert retrieved is not None
+        assert retrieved.source_bot == "claw-bot-1"
+
+    @pytest.mark.asyncio
+    async def test_source_bot_none_by_default(self, store):
+        """source_bot defaults to None when not specified."""
+        await store.put("simple.txt", b"hello")
+        meta = await store.get_meta("simple.txt")
+        assert meta is not None
+        assert meta.source_bot is None
+
+
 # ── BuildResult tests ────────────────────────────────────────
 
 
