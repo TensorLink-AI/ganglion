@@ -19,6 +19,7 @@ class MCPClientConfig:
     category: str = "mcp"  # ToolDef category for all tools from this server
     token: str | None = None  # bearer token for SSE auth
     timeout: float = 30.0  # per-call timeout in seconds
+    cwd: str | None = None  # working directory for stdio subprocess
 
     def validate(self) -> list[str]:
         """Validate this configuration. Returns list of errors (empty = valid)."""
@@ -46,4 +47,5 @@ class MCPClientConfig:
             "category": self.category,
             "token": self.token,
             "timeout": self.timeout,
+            "cwd": self.cwd,
         }

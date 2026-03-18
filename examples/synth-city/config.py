@@ -11,7 +11,10 @@ Reference: https://github.com/mode-network/synth-subnet
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+_PROJECT_DIR = str(Path(__file__).resolve().parent)
 
 from ganglion.compute.protocol import DockerPrefab
 from ganglion.compute.router import ComputeRoute, ComputeRouter
@@ -147,6 +150,7 @@ mcp_clients = [
         tool_prefix="market",
         category="data",
         timeout=15.0,
+        cwd=_PROJECT_DIR,
     ),
 ]
 

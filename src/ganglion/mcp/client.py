@@ -81,6 +81,7 @@ class MCPClientBridge:
             command=self.config.command[0],
             args=self.config.command[1:] if len(self.config.command) > 1 else [],
             env=self.config.env,
+            cwd=self.config.cwd,
         )
         transport = await self._exit_stack.enter_async_context(stdio_client(params))
         read, write = transport
