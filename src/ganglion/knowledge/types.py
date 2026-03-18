@@ -180,3 +180,6 @@ class KnowledgeQuery:
     exclude_source: str | None = None
     subnet_id: str | None = None
     record_type: str | None = None
+
+    def __post_init__(self) -> None:
+        self.max_entries = int(self.max_entries)

@@ -108,13 +108,16 @@ async def run_pipeline(overrides: str = "") -> RalphToolResult:
     state = _get_state()
     override_dict = None
     if overrides:
-        try:
-            override_dict = json.loads(overrides)
-        except json.JSONDecodeError as e:
-            return RalphToolResult(
-                content=f"Invalid overrides JSON: {e}",
-                structured={"success": False, "error": str(e)},
-            )
+        if isinstance(overrides, dict):
+            override_dict = overrides
+        else:
+            try:
+                override_dict = json.loads(overrides)
+            except (json.JSONDecodeError, TypeError) as e:
+                return RalphToolResult(
+                    content=f"Invalid overrides JSON: {e}",
+                    structured={"success": False, "error": str(e)},
+                )
 
     try:
         result = await state.run_pipeline(overrides=override_dict)
