@@ -201,7 +201,7 @@ async def fetch_prices(ctx: TaskContext) -> AgentResult:
                     success=True,
                     structured={
                         "asset": asset,
-                        "prices": result.metrics["prices"],
+                        "historical_prices": result.metrics["prices"],
                         "timestamps": result.metrics.get("timestamps", []),
                     },
                     raw_text=f"Fetched {result.metrics.get('valid_points', 0)} prices for {asset}",
@@ -210,7 +210,7 @@ async def fetch_prices(ctx: TaskContext) -> AgentResult:
     # Fallback — the agent or a subsequent stage must provide real prices
     return AgentResult(
         success=True,
-        structured={"asset": asset, "prices": [], "source": "placeholder"},
+        structured={"asset": asset, "historical_prices": [], "source": "placeholder"},
         raw_text=f"No price data fetched for {asset} — agent should provide via tool",
     )
 

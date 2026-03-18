@@ -168,6 +168,14 @@ class PipelineOrchestrator:
             stage_result = await self._execute_stage(stage_def, task)
             results[stage_def.name] = stage_result
 
+            # Write declared output_keys from result.structured → TaskContext
+            if stage_result.success and stage_result.result:
+                structured = stage_result.result.structured
+                if isinstance(structured, dict) and stage_def.output_keys:
+                    for key in stage_def.output_keys:
+                        if key in structured:
+                            task.set(key, structured[key], stage=stage_def.name)
+
             # Persist checkpoint
             if self.persistence:
                 await self.persistence.save_checkpoint(
