@@ -535,10 +535,23 @@ class FrameworkState:
     async def initialize_mcp(self) -> None:
         """Connect to all statically-configured MCP servers from config.py."""
         for config in self._mcp_configs:
-            try:
-                await self._connect_mcp_bridge(config)
-            except Exception as e:
-                logger.error("Failed to connect MCP server '%s': %s", config.name, e)
+            last_err: Exception | None = None
+            for attempt in range(3):
+                try:
+                    await self._connect_mcp_bridge(config)
+                    last_err = None
+                    break
+                except Exception as e:
+                    last_err = e
+                    if attempt < 2:
+                        delay = 2 ** attempt
+                        logger.warning(
+                            "MCP server '%s' connection attempt %d failed, retrying in %ds: %s",
+                            config.name, attempt + 1, delay, e,
+                        )
+                        await asyncio.sleep(delay)
+            if last_err is not None:
+                logger.error("Failed to connect MCP server '%s': %s", config.name, last_err)
 
     async def shutdown_mcp(self) -> None:
         """Disconnect from all MCP servers."""
@@ -654,6 +667,8 @@ class FrameworkState:
     def _build_initial(self, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
         """Merge user overrides with internal context (tool registry, etc.)."""
         initial: dict[str, Any] = {"_tool_registry": self.tool_registry}
+        if self.compute_router:
+            initial["_compute_router"] = self.compute_router
         if overrides:
             initial.update(overrides)
         return initial
