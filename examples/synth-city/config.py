@@ -11,16 +11,12 @@ Reference: https://github.com/mode-network/synth-subnet
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
-
-_PROJECT_DIR = str(Path(__file__).resolve().parent)
 
 from ganglion.compute.protocol import DockerPrefab
 from ganglion.compute.router import ComputeRoute, ComputeRouter
 from ganglion.knowledge.backends.json_backend import JsonKnowledgeBackend
 from ganglion.knowledge.store import KnowledgeStore
-from ganglion.mcp.config import MCPClientConfig
 from ganglion.orchestration.pipeline import PipelineDef, StageDef, ToolStageDef
 from ganglion.orchestration.task_context import (
     MetricDef,
@@ -140,19 +136,9 @@ subnet_config = SubnetConfig(
 )
 
 # ── MCP tool servers ─────────────────────────────────────────
-# Connect to external data feeds via MCP.
-
-mcp_clients = [
-    MCPClientConfig(
-        name="market-data",
-        transport="stdio",
-        command=["python", "-m", "synth_market_data_server"],
-        tool_prefix="market",
-        category="data",
-        timeout=15.0,
-        cwd=_PROJECT_DIR,
-    ),
-]
+# Market-data tools (fetch_price, fetch_historical_prices) are registered
+# directly from tools/ — no MCP server needed.
+mcp_clients: list = []
 
 # ── Compute routing ──────────────────────────────────────────
 # Route stages to the synth-worker on RunPod or locally.
