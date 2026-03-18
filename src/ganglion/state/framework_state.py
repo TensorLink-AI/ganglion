@@ -651,6 +651,13 @@ class FrameworkState:
 
     # ── Execution methods ───────────────────────────────────
 
+    def _build_initial(self, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Merge user overrides with internal context (tool registry, etc.)."""
+        initial: dict[str, Any] = {"_tool_registry": self.tool_registry}
+        if overrides:
+            initial.update(overrides)
+        return initial
+
     async def run_pipeline(self, overrides: dict[str, Any] | None = None) -> PipelineResult:
         """Execute the current pipeline. Blocks mutations during execution."""
         async with self._run_lock:
@@ -658,7 +665,7 @@ class FrameworkState:
             try:
                 task = TaskContext(
                     subnet_config=self.subnet_config,
-                    initial=overrides,
+                    initial=self._build_initial(overrides),
                 )
                 orchestrator = PipelineOrchestrator(
                     pipeline=self.pipeline_def,
@@ -691,7 +698,7 @@ class FrameworkState:
 
                 task = TaskContext(
                     subnet_config=self.subnet_config,
-                    initial=context,
+                    initial=self._build_initial(context),
                 )
                 orchestrator = PipelineOrchestrator(
                     pipeline=self.pipeline_def,
