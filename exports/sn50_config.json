@@ -1,0 +1,61 @@
+{
+  "subnet_id": "sn50",
+  "name": "Synth City",
+  "metrics": [
+    {
+      "name": "crps",
+      "direction": "minimize",
+      "weight": 1.0,
+      "description": "Continuous Ranked Probability Score — the primary scoring metric.  Computed per time increment (5 min, 30 min, 3 h, 24 h absolute) in basis points.  Lower is better."
+    },
+    {
+      "name": "calibration",
+      "direction": "minimize",
+      "weight": 0.3,
+      "description": "How well predicted quantiles match observed frequencies.  Implied by CRPS but tracked separately for diagnostics."
+    },
+    {
+      "name": "sharpness",
+      "direction": "minimize",
+      "weight": 0.2,
+      "description": "Width of prediction intervals.  Sharper (narrower) distributions score better — but only if well-calibrated."
+    }
+  ],
+  "tasks": {
+    "lf_btc": { "weight": 1.0, "asset": "BTC", "time_increment": 300, "time_length": 86400 },
+    "lf_eth": { "weight": 0.67, "asset": "ETH", "time_increment": 300, "time_length": 86400 },
+    "lf_sol": { "weight": 1.0, "asset": "SOL", "time_increment": 300, "time_length": 86400 },
+    "lf_xau": { "weight": 2.26, "asset": "XAU", "time_increment": 300, "time_length": 86400 },
+    "lf_spyx": { "weight": 1.4, "asset": "SPYX", "time_increment": 300, "time_length": 86400 },
+    "lf_nvdax": { "weight": 2.99, "asset": "NVDAX", "time_increment": 300, "time_length": 86400 },
+    "lf_tslax": { "weight": 2.0, "asset": "TSLAX", "time_increment": 300, "time_length": 86400 },
+    "lf_aaplx": { "weight": 2.0, "asset": "AAPLX", "time_increment": 300, "time_length": 86400 },
+    "lf_googlx": { "weight": 2.0, "asset": "GOOGLX", "time_increment": 300, "time_length": 86400 },
+    "hf_btc": { "weight": 1.0, "asset": "BTC", "time_increment": 60, "time_length": 3600 },
+    "hf_eth": { "weight": 0.67, "asset": "ETH", "time_increment": 60, "time_length": 3600 },
+    "hf_sol": { "weight": 1.0, "asset": "SOL", "time_increment": 60, "time_length": 3600 },
+    "hf_xau": { "weight": 2.26, "asset": "XAU", "time_increment": 60, "time_length": 3600 }
+  },
+  "output_spec": {
+    "format": "price_paths_tuple",
+    "shape_constraints": {
+      "lf_steps": 289,
+      "hf_steps": 61,
+      "num_simulations": 1000,
+      "max_digits_per_price": 8
+    },
+    "description": "Tuple: (start_timestamp, time_increment, [path_1], ..., [path_1000]).  Each path is a list of floats with (time_length / time_increment) + 1 price points.  Max 8 digits per value."
+  },
+  "constraints": {
+    "num_simulations": 1000,
+    "lf_time_increment_s": 300,
+    "lf_time_length_s": 86400,
+    "hf_time_increment_s": 60,
+    "hf_time_length_s": 3600,
+    "scoring_intervals_lf": "5min, 30min, 3h, 24h_abs",
+    "scoring_intervals_hf": "1min to 60min (18 intervals)",
+    "moving_average_window_days": 10,
+    "moving_average_halflife_days": 5,
+    "emission_split": "50% low-freq / 50% high-freq"
+  }
+}
