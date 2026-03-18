@@ -109,12 +109,14 @@ class PipelineOrchestrator:
         persistence: PersistenceBackend | None = None,
         knowledge: Any | None = None,
         event_handler: Callable[[PipelineEvent], None] | None = None,
+        llm_client: Any | None = None,
     ):
         self.pipeline = pipeline
         self.agents = agents
         self.persistence = persistence
         self.knowledge = knowledge
         self.emit = event_handler or (lambda e: None)
+        self.llm_client = llm_client
 
     async def run(self, task: TaskContext) -> PipelineResult:
         """Execute all stages in dependency order."""
@@ -165,6 +167,14 @@ class PipelineOrchestrator:
             # Execute with retry
             stage_result = await self._execute_stage(stage_def, task)
             results[stage_def.name] = stage_result
+
+            # Write declared output_keys from result.structured → TaskContext
+            if stage_result.success and stage_result.result:
+                structured = stage_result.result.structured
+                if isinstance(structured, dict) and stage_def.output_keys:
+                    for key in stage_def.output_keys:
+                        if key in structured:
+                            task.set(key, structured[key], stage=stage_def.name)
 
             # Persist checkpoint
             if self.persistence:
@@ -303,6 +313,8 @@ class PipelineOrchestrator:
                         agent_kwargs["extra_system_context"] = combined
 
             try:
+                if self.llm_client and "llm_client" not in agent_kwargs:
+                    agent_kwargs["llm_client"] = self.llm_client
                 agent = agent_cls(**agent_kwargs)
                 result = await agent.run(task)
                 last_result = result

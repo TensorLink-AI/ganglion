@@ -53,6 +53,7 @@ class FrameworkState:
         mcp_configs: list[Any] | None = None,
         compute_router: ComputeRouter | None = None,
         build_backend: BuildBackend | None = None,
+        llm_client: Any | None = None,
     ):
         self.subnet_config = subnet_config
         self.pipeline_def = pipeline_def
@@ -62,6 +63,7 @@ class FrameworkState:
         self.project_root = project_root or Path(".")
         self.knowledge = knowledge
         self.validator = validator or MutationValidator()
+        self.llm_client = llm_client
 
         # Compute
         self.compute_router = compute_router
@@ -533,10 +535,23 @@ class FrameworkState:
     async def initialize_mcp(self) -> None:
         """Connect to all statically-configured MCP servers from config.py."""
         for config in self._mcp_configs:
-            try:
-                await self._connect_mcp_bridge(config)
-            except Exception as e:
-                logger.error("Failed to connect MCP server '%s': %s", config.name, e)
+            last_err: Exception | None = None
+            for attempt in range(3):
+                try:
+                    await self._connect_mcp_bridge(config)
+                    last_err = None
+                    break
+                except Exception as e:
+                    last_err = e
+                    if attempt < 2:
+                        delay = 2 ** attempt
+                        logger.warning(
+                            "MCP server '%s' connection attempt %d failed, retrying in %ds: %s",
+                            config.name, attempt + 1, delay, e,
+                        )
+                        await asyncio.sleep(delay)
+            if last_err is not None:
+                logger.error("Failed to connect MCP server '%s': %s", config.name, last_err)
 
     async def shutdown_mcp(self) -> None:
         """Disconnect from all MCP servers."""
@@ -649,6 +664,15 @@ class FrameworkState:
 
     # ── Execution methods ───────────────────────────────────
 
+    def _build_initial(self, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Merge user overrides with internal context (tool registry, etc.)."""
+        initial: dict[str, Any] = {"_tool_registry": self.tool_registry}
+        if self.compute_router:
+            initial["_compute_router"] = self.compute_router
+        if overrides:
+            initial.update(overrides)
+        return initial
+
     async def run_pipeline(self, overrides: dict[str, Any] | None = None) -> PipelineResult:
         """Execute the current pipeline. Blocks mutations during execution."""
         async with self._run_lock:
@@ -656,13 +680,14 @@ class FrameworkState:
             try:
                 task = TaskContext(
                     subnet_config=self.subnet_config,
-                    initial=overrides,
+                    initial=self._build_initial(overrides),
                 )
                 orchestrator = PipelineOrchestrator(
                     pipeline=self.pipeline_def,
                     agents=self.agent_registry.as_dict(),
                     persistence=self.persistence,
                     knowledge=self.knowledge,
+                    llm_client=self.llm_client,
                 )
                 result = await orchestrator.run(task)
                 if self.persistence:
@@ -688,13 +713,14 @@ class FrameworkState:
 
                 task = TaskContext(
                     subnet_config=self.subnet_config,
-                    initial=context,
+                    initial=self._build_initial(context),
                 )
                 orchestrator = PipelineOrchestrator(
                     pipeline=self.pipeline_def,
                     agents=self.agent_registry.as_dict(),
                     persistence=self.persistence,
                     knowledge=self.knowledge,
+                    llm_client=self.llm_client,
                 )
                 return await orchestrator._execute_stage(stage_def, task)
             finally:

@@ -171,6 +171,49 @@ def main(argv: list[str] | None = None) -> None:
         help="Path to roles JSON file for multi-role MCP serving",
     )
 
+    # ── ralph ─────────────────────────────────────────────
+    ralph_parser = subparsers.add_parser(
+        "ralph",
+        help="Start the Ralph loop agent — continuous pipeline operator with HTTP server",
+    )
+    ralph_parser.add_argument("project_dir", help=_project_help)
+    ralph_parser.add_argument("--bot-id", default=None)
+    ralph_parser.add_argument(
+        "--host",
+        default=None,
+        help="Host for the HTTP bridge server (default: from config or 127.0.0.1)",
+    )
+    ralph_parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Port for the HTTP bridge server (default: from config or 8899)",
+    )
+    ralph_parser.add_argument(
+        "--interval",
+        type=int,
+        default=300,
+        help="Seconds between loop iterations (default: 300)",
+    )
+    ralph_parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=0,
+        help="Stop after N iterations (default: 0 = run forever)",
+    )
+    ralph_parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=50,
+        help="Max LLM turns per iteration (default: 50)",
+    )
+    ralph_parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.7,
+        help="LLM temperature (default: 0.7)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -189,6 +232,7 @@ def main(argv: list[str] | None = None) -> None:
         "pipeline": _run_pipeline,
         "run": _run_run,
         "mcp-serve": _run_mcp_serve,
+        "ralph": _run_ralph,
     }
 
     handler = commands.get(args.command)
@@ -429,6 +473,92 @@ def _run_mcp_serve(args: argparse.Namespace) -> None:
             await state.shutdown_mcp()
 
     _async_run(_serve())
+
+
+# ── ralph ──────────────────────────────────────────────────
+
+
+def _run_ralph(args: argparse.Namespace) -> None:
+    from ganglion.agents.ralph import RalphLoopAgent
+    from ganglion.config import GanglionConfig
+    from ganglion.runtime.llm_client import LLMClient
+
+    config = GanglionConfig.from_env()
+    config.validate_or_raise()
+
+    state = _load_state(args.project_dir, bot_id=args.bot_id)
+
+    # Auto-register Basilica compute backend if token is set
+    if config.basilica_token:
+        from ganglion.compute.backends.registry import get_backend_registry
+
+        try:
+            registry = get_backend_registry()
+            basilica = registry.create("basilica", api_token=config.basilica_token)
+            _async_run(state.hot_add_backend("basilica", basilica))
+            logger.info("Ralph: registered Basilica compute backend")
+        except (ImportError, ValueError) as e:
+            logger.warning("Ralph: could not register Basilica backend: %s", e)
+
+    # Initialize MCP connections before starting
+    _async_run(state.initialize_mcp())
+
+    # Build the LLM client
+    llm_client = LLMClient(
+        api_key=config.llm_provider_api_key,
+        base_url=config.llm_provider_base_url or None,
+        model=config.llm_model,
+        max_retries=config.llm_max_retries,
+        base_delay=config.llm_base_delay,
+        max_delay=config.llm_max_delay,
+        request_timeout=config.llm_request_timeout,
+    )
+
+    # Make LLM client available to pipeline agents via state
+    state.llm_client = llm_client
+
+    ralph = RalphLoopAgent(
+        state=state,
+        config=config,
+        loop_interval=args.interval,
+        max_iterations=args.max_iterations,
+        llm_client=llm_client,
+        max_turns=args.max_turns,
+        temperature=args.temperature,
+        model=config.llm_model,
+    )
+
+    host = args.host or config.server_host
+    port = args.port or config.server_port
+
+    logger.info(
+        "Ralph loop agent starting (project=%s, subnet=%s, interval=%ds, "
+        "max_iterations=%s, server=%s:%d)",
+        state.project_root.resolve(),
+        state.subnet_config.name,
+        args.interval,
+        args.max_iterations or "unlimited",
+        host,
+        port,
+    )
+
+    # Start HTTP server in background
+    ralph.start_server(host=host, port=port)
+
+    # Run the agent loop
+    try:
+        results = _async_run(ralph.run_loop())
+        success_count = sum(1 for r in results if r.success)
+        logger.info(
+            "Ralph finished: %d/%d iterations succeeded",
+            success_count,
+            len(results),
+        )
+    except KeyboardInterrupt:
+        logger.info("Ralph: interrupted, shutting down")
+        ralph.stop()
+    finally:
+        _async_run(state.shutdown_mcp())
 
 
 if __name__ == "__main__":

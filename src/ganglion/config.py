@@ -9,6 +9,11 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+from dotenv import load_dotenv
+
+# Load .env file (if present) so env vars are available before from_env() runs.
+load_dotenv()
+
 
 @dataclass(frozen=True)
 class GanglionConfig:
@@ -43,6 +48,9 @@ class GanglionConfig:
 
     # Request limits
     max_request_body_bytes: int = 10 * 1024 * 1024  # 10MB
+
+    # Compute backends
+    basilica_token: str = ""
 
     # MCP server (outbound — expose Ganglion tools via MCP)
     mcp_server_enabled: bool = False
@@ -103,6 +111,7 @@ class GanglionConfig:
             max_patterns=_get_int("MAX_PATTERNS", 500),
             max_antipatterns=_get_int("MAX_ANTIPATTERNS", 500),
             max_request_body_bytes=_get_int("MAX_REQUEST_BODY_BYTES", 10 * 1024 * 1024),
+            basilica_token=_get("BASILICA_TOKEN", ""),
             mcp_server_enabled=_get("MCP_SERVER_ENABLED", "").lower() in ("1", "true", "yes"),
             mcp_server_transport=_get("MCP_SERVER_TRANSPORT", "stdio"),
             mcp_server_sse_port=_get_int("MCP_SERVER_SSE_PORT", 8900),

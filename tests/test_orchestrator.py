@@ -323,6 +323,48 @@ class TestPipelineOrchestrator:
         assert result.success is True
         assert result.results["fetch"].attempts == 2
 
+    async def test_output_keys_written_to_context(self):
+        """Orchestrator should write output_keys from structured result into TaskContext."""
+
+        async def produce(task):
+            return AgentResult(
+                success=True,
+                structured={"price_paths": [[1, 2, 3]], "extra": "ignored"},
+                raw_text="OK",
+            )
+
+        async def consume(task):
+            paths = task.get("price_paths")
+            return AgentResult(
+                success=True,
+                structured={"score": sum(paths[0])},
+                raw_text=f"Score={sum(paths[0])}",
+            )
+
+        pipeline = PipelineDef(
+            name="test",
+            stages=[
+                ToolStageDef(
+                    name="simulate",
+                    fn=produce,
+                    output_keys=["price_paths"],
+                ),
+                ToolStageDef(
+                    name="backtest",
+                    fn=consume,
+                    depends_on=["simulate"],
+                    input_keys=["price_paths"],
+                    output_keys=["score"],
+                ),
+            ],
+        )
+        orchestrator = PipelineOrchestrator(pipeline=pipeline, agents={})
+        ctx = TaskContext(make_config())
+        result = await orchestrator.run(ctx)
+        assert result.success is True
+        assert ctx.get("price_paths") == [[1, 2, 3]]
+        assert ctx.get("score") == 6
+
     async def test_tool_stage_events(self):
         events: list[PipelineEvent] = []
 
