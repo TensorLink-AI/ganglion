@@ -7,7 +7,6 @@ a background thread for external clients; Ralph drives it from inside.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -66,7 +65,7 @@ def check_server_health() -> RalphToolResult:
     )
 
 
-def get_status() -> RalphToolResult:
+async def get_status() -> RalphToolResult:
     """Get the full framework state snapshot.
 
     Returns subnet config, pipeline definition, registered tools and agents,
@@ -74,11 +73,7 @@ def get_status() -> RalphToolResult:
     to understand the current state before making decisions.
     """
     state = _get_state()
-    loop = asyncio.new_event_loop()
-    try:
-        desc = loop.run_until_complete(state.describe())
-    finally:
-        loop.close()
+    desc = await state.describe()
     return RalphToolResult(
         content=json.dumps(desc, indent=2, default=str),
         structured=desc,
@@ -99,7 +94,7 @@ def get_pipeline_info() -> RalphToolResult:
     )
 
 
-def run_pipeline(overrides: str = "") -> RalphToolResult:
+async def run_pipeline(overrides: str = "") -> RalphToolResult:
     """Execute the full mining pipeline.
 
     Runs all stages in dependency order. Optionally pass overrides as a JSON
@@ -121,17 +116,14 @@ def run_pipeline(overrides: str = "") -> RalphToolResult:
                 structured={"success": False, "error": str(e)},
             )
 
-    loop = asyncio.new_event_loop()
     try:
-        result = loop.run_until_complete(state.run_pipeline(overrides=override_dict))
+        result = await state.run_pipeline(overrides=override_dict)
     except Exception as e:
         logger.error("Pipeline execution failed: %s", e, exc_info=True)
         return RalphToolResult(
             content=f"Pipeline failed: {e}",
             structured={"success": False, "error": str(e)},
         )
-    finally:
-        loop.close()
 
     result_dict = result.to_dict()
     return RalphToolResult(
@@ -140,7 +132,7 @@ def run_pipeline(overrides: str = "") -> RalphToolResult:
     )
 
 
-def run_stage(stage_name: str, context: str = "") -> RalphToolResult:
+async def run_stage(stage_name: str, context: str = "") -> RalphToolResult:
     """Execute a single pipeline stage in isolation.
 
     Useful for testing individual stages or re-running a failed stage
@@ -161,17 +153,14 @@ def run_stage(stage_name: str, context: str = "") -> RalphToolResult:
                 structured={"success": False, "error": str(e)},
             )
 
-    loop = asyncio.new_event_loop()
     try:
-        result = loop.run_until_complete(state.run_single_stage(stage_name, ctx))
+        result = await state.run_single_stage(stage_name, ctx)
     except Exception as e:
         logger.error("Stage '%s' failed: %s", stage_name, e, exc_info=True)
         return RalphToolResult(
             content=f"Stage '{stage_name}' failed: {e}",
             structured={"success": False, "error": str(e)},
         )
-    finally:
-        loop.close()
 
     result_dict = result.to_dict()
     return RalphToolResult(
@@ -207,7 +196,7 @@ def list_agents() -> RalphToolResult:
     )
 
 
-def get_knowledge(capability: str = "", max_entries: int = 20) -> RalphToolResult:
+async def get_knowledge(capability: str = "", max_entries: int = 20) -> RalphToolResult:
     """Query the knowledge store for patterns and antipatterns.
 
     The knowledge store tracks what model configurations and strategies
@@ -228,25 +217,17 @@ def get_knowledge(capability: str = "", max_entries: int = 20) -> RalphToolResul
 
     query = KnowledgeQuery(capability=capability or None, max_entries=max_entries)
 
-    loop = asyncio.new_event_loop()
-    try:
-
-        async def _gather() -> dict[str, Any]:
-            return {
-                "patterns": [
-                    p.__dict__
-                    for p in await state.knowledge.backend.query_patterns(query)
-                ],
-                "antipatterns": [
-                    a.__dict__
-                    for a in await state.knowledge.backend.query_antipatterns(query)
-                ],
-                "summary": await state.knowledge.summary(),
-            }
-
-        result = loop.run_until_complete(_gather())
-    finally:
-        loop.close()
+    result = {
+        "patterns": [
+            p.__dict__
+            for p in await state.knowledge.backend.query_patterns(query)
+        ],
+        "antipatterns": [
+            a.__dict__
+            for a in await state.knowledge.backend.query_antipatterns(query)
+        ],
+        "summary": await state.knowledge.summary(),
+    }
 
     pattern_count = len(result["patterns"])
     antipattern_count = len(result["antipatterns"])
@@ -256,7 +237,7 @@ def get_knowledge(capability: str = "", max_entries: int = 20) -> RalphToolResul
     )
 
 
-def get_run_history(n: int = 10) -> RalphToolResult:
+async def get_run_history(n: int = 10) -> RalphToolResult:
     """Get the history of past pipeline runs.
 
     Returns the most recent N pipeline runs with their results and metrics.
@@ -271,12 +252,7 @@ def get_run_history(n: int = 10) -> RalphToolResult:
             structured={"runs": []},
         )
 
-    loop = asyncio.new_event_loop()
-    try:
-        runs = loop.run_until_complete(state.persistence.load_run_history(n=n))
-    finally:
-        loop.close()
-
+    runs = await state.persistence.load_run_history(n=n)
     return RalphToolResult(
         content=f"Run history: {len(runs)} runs",
         structured={"runs": runs, "count": len(runs)},
@@ -299,19 +275,14 @@ def get_subnet_config() -> RalphToolResult:
     )
 
 
-def get_compute_status() -> RalphToolResult:
+async def get_compute_status() -> RalphToolResult:
     """Get the status of compute backends and active jobs.
 
     Returns which compute backends are connected (RunPod, local, etc.),
     their routing rules, and any active jobs.
     """
     state = _get_state()
-    loop = asyncio.new_event_loop()
-    try:
-        status = loop.run_until_complete(state.compute_status())
-    finally:
-        loop.close()
-
+    status = await state.compute_status()
     return RalphToolResult(
         content=json.dumps(status, indent=2, default=str),
         structured=status,
