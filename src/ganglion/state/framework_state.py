@@ -53,6 +53,7 @@ class FrameworkState:
         mcp_configs: list[Any] | None = None,
         compute_router: ComputeRouter | None = None,
         build_backend: BuildBackend | None = None,
+        llm_client: Any | None = None,
     ):
         self.subnet_config = subnet_config
         self.pipeline_def = pipeline_def
@@ -62,6 +63,7 @@ class FrameworkState:
         self.project_root = project_root or Path(".")
         self.knowledge = knowledge
         self.validator = validator or MutationValidator()
+        self.llm_client = llm_client
 
         # Compute
         self.compute_router = compute_router
@@ -663,6 +665,7 @@ class FrameworkState:
                     agents=self.agent_registry.as_dict(),
                     persistence=self.persistence,
                     knowledge=self.knowledge,
+                    llm_client=self.llm_client,
                 )
                 result = await orchestrator.run(task)
                 if self.persistence:
@@ -695,6 +698,7 @@ class FrameworkState:
                     agents=self.agent_registry.as_dict(),
                     persistence=self.persistence,
                     knowledge=self.knowledge,
+                    llm_client=self.llm_client,
                 )
                 return await orchestrator._execute_stage(stage_def, task)
             finally:

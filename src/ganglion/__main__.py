@@ -514,6 +514,9 @@ def _run_ralph(args: argparse.Namespace) -> None:
         request_timeout=config.llm_request_timeout,
     )
 
+    # Make LLM client available to pipeline agents via state
+    state.llm_client = llm_client
+
     ralph = RalphLoopAgent(
         state=state,
         config=config,
