@@ -214,14 +214,14 @@ async def fetch_prices(ctx: TaskContext) -> AgentResult:
                         "prices": result.metrics["prices"],
                         "timestamps": result.metrics.get("timestamps", []),
                     },
-                    summary=f"Fetched {result.metrics.get('valid_points', 0)} prices for {asset}",
+                    raw_text=f"Fetched {result.metrics.get('valid_points', 0)} prices for {asset}",
                 )
 
     # Fallback — the agent or a subsequent stage must provide real prices
     return AgentResult(
         success=True,
         structured={"asset": asset, "prices": [], "source": "placeholder"},
-        summary=f"No price data fetched for {asset} — agent should provide via tool",
+        raw_text=f"No price data fetched for {asset} — agent should provide via tool",
     )
 
 
@@ -294,7 +294,7 @@ async def score_paths(ctx: TaskContext) -> AgentResult:
                     return AgentResult(
                         success=True,
                         structured=parsed,
-                        summary=f"Backtest complete for {asset}: CRPS={parsed.get('crps_total', '?')}",
+                        raw_text=f"Backtest complete for {asset}: CRPS={parsed.get('crps_total', '?')}",
                     )
                 except json.JSONDecodeError:
                     pass
@@ -316,13 +316,13 @@ async def score_paths(ctx: TaskContext) -> AgentResult:
             return AgentResult(
                 success=True,
                 structured=result.metrics if hasattr(result, "metrics") else {},
-                summary=result.content if hasattr(result, "content") else str(result),
+                raw_text=result.content if hasattr(result, "content") else str(result),
             )
 
     return AgentResult(
         success=False,
         structured={"error": "No compute backend or backtest tool available"},
-        summary=f"Could not run backtest for {asset}",
+        raw_text=f"Could not run backtest for {asset}",
     )
 
 

@@ -148,13 +148,16 @@ async def run_stage(stage_name: str, context: str = "") -> RalphToolResult:
     state = _get_state()
     ctx = None
     if context:
-        try:
-            ctx = json.loads(context)
-        except json.JSONDecodeError as e:
-            return RalphToolResult(
-                content=f"Invalid context JSON: {e}",
-                structured={"success": False, "error": str(e)},
-            )
+        if isinstance(context, dict):
+            ctx = context
+        else:
+            try:
+                ctx = json.loads(context)
+            except (json.JSONDecodeError, TypeError) as e:
+                return RalphToolResult(
+                    content=f"Invalid context JSON: {e}",
+                    structured={"success": False, "error": str(e)},
+                )
 
     try:
         result = await state.run_single_stage(stage_name, ctx)
